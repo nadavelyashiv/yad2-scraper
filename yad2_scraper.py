@@ -20,43 +20,9 @@ import urllib.parse
 import urllib.request
 
 from camoufox.sync_api import Camoufox
+from utils import load_config, send_telegram, check_new_items
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 ITEM_ID_RE = re.compile(r"/item/(?:[^/?]+/)*([a-z0-9]+)(?:\?|$)", re.I)
-
-
-def load_config():
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def send_telegram(token, chat_id, text):
-    if not token or not chat_id:
-        print("[telegram skipped — no token/chatId]\n" + text)
-        return
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    
-    chunks = []
-    current_chunk = ""
-    for line in text.split('\n'):
-        if len(current_chunk) + len(line) + 1 > 4000:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            current_chunk = line + "\n"
-        else:
-            current_chunk += line + "\n"
-    if current_chunk.strip():
-        chunks.append(current_chunk.strip())
-        
-    for chunk in chunks:
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": chunk}).encode()
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20) as r:
-                r.read()
-        except Exception as e:  # noqa: BLE001
-            print(f"Telegram send failed: {e}")
-
 
 def scrape_items(page, url):
     """Return {item_id: text} for the listings on the page."""
@@ -89,27 +55,6 @@ def scrape_items(page, url):
     raise RuntimeError("Could not extract listings (Radware challenge or markup change)")
 
 
-def check_new_items(topic, items):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    path = os.path.join(DATA_DIR, f"{topic}.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            saved = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        saved = []
-    saved_set = set(saved)
-    current = list(items.keys())
-    new_ids = [i for i in current if i not in saved_set]
-    # keep only ids still live + the new ones (mirrors original pruning)
-    updated = [i for i in saved if i in items] + new_ids
-    if new_ids or updated != saved:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(updated, f, ensure_ascii=False, indent=2)
-        with open(os.path.join(os.path.dirname(__file__), "push_me"), "w") as f:
-            f.write("")
-    return new_ids
-
-
 def scrape(page, topic, url, token, chat_id):
     send_telegram(token, chat_id, f"Starting scanning {topic} on link:\n{url}")
     try:
@@ -130,12 +75,12 @@ def main():
     config = load_config()
     token = os.environ.get("API_TOKEN") or config.get("telegramApiToken")
     chat_id = os.environ.get("CHAT_ID") or config.get("chatId")
-    projects = [p for p in config.get("projects", []) if not p.get("disabled")]
-    for p in config.get("projects", []):
+    projects = [p for p in config.get("yad2Projects", []) if not p.get("disabled")]
+    for p in config.get("yad2Projects", []):
         if p.get("disabled"):
             print(f'Topic "{p.get("topic")}" is disabled. Skipping.')
     if not projects:
-        print("No enabled projects in config.json")
+        print("No enabled Yad2 projects in config.json")
         return
     with Camoufox(headless=True, window=(1400, 1000)) as browser:
         page = browser.new_page()

@@ -31,11 +31,13 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "${{ secrets.GIT_CONFIG_EMAIL }}"
 
-      - name: Run scraper
+      - name: Run scrapers
         run: |
           export API_TOKEN=${{ secrets.API_TOKEN }}
           export CHAT_ID=${{ secrets.CHAT_ID }}
-          python scraper.py
+          python yad2_scraper.py &
+          python madlan_scraper.py &
+          wait
 
       - name: Push new json data if needed
         run: |
