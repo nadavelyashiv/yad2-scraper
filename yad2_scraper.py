@@ -29,19 +29,23 @@ def scrape_items(page, url):
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
     for _ in range(15):
         time.sleep(2)
-        if not page.evaluate("() => !!document.body"):
+        try:
+            if not page.evaluate("() => !!document.body"):
+                continue
+            title = page.title()
+            if title == "Radware Page":
+                continue  # challenge not cleared yet
+            rows = page.evaluate(
+                r"""() => Array.from(document.querySelectorAll('div[class*="feedItemBox"] a[href*="/item/"]'))
+                       .map(el => ({
+                           href: el.getAttribute('href') || '',
+                           text: (el.innerText || '').replace(/\n+/g, ' | ').trim()
+                       }))
+                       .filter(r => r.text.length > 10)"""
+            )
+        except Exception:
+            # Execution context might be destroyed if page is navigating/reloading (e.g. Radware cleared)
             continue
-        title = page.title()
-        if title == "Radware Page":
-            continue  # challenge not cleared yet
-        rows = page.evaluate(
-            r"""() => Array.from(document.querySelectorAll('div[class*="feedItemBox"] a[href*="/item/"]'))
-                   .map(el => ({
-                       href: el.getAttribute('href') || '',
-                       text: (el.innerText || '').replace(/\n+/g, ' | ').trim()
-                   }))
-                   .filter(r => r.text.length > 10)"""
-        )
         if rows:
             items = {}
             for r in rows:

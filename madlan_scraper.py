@@ -12,18 +12,21 @@ def scrape_madlan_items(page, url):
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
     for _ in range(15):
         time.sleep(2)
-        if not page.evaluate("() => !!document.body"):
+        try:
+            if not page.evaluate("() => !!document.body"):
+                continue
+            rows = page.evaluate(
+                r"""() => Array.from(document.querySelectorAll('div[data-auto="listed-bulletin"]'))
+                       .map(el => {
+                           const linkEl = el.querySelector('a[data-auto="listed-bulletin-clickable"]');
+                           const href = linkEl ? linkEl.getAttribute('href') : '';
+                           const text = (el.innerText || '').replace(/\n+/g, ' | ').trim();
+                           return { href, text };
+                       })
+                       .filter(r => r.text.length > 10 && r.href)"""
+            )
+        except Exception:
             continue
-        rows = page.evaluate(
-            r"""() => Array.from(document.querySelectorAll('div[data-auto="listed-bulletin"]'))
-                   .map(el => {
-                       const linkEl = el.querySelector('a[data-auto="listed-bulletin-clickable"]');
-                       const href = linkEl ? linkEl.getAttribute('href') : '';
-                       const text = (el.innerText || '').replace(/\n+/g, ' | ').trim();
-                       return { href, text };
-                   })
-                   .filter(r => r.text.length > 10 && r.href)"""
-        )
         if rows:
             items = {}
             for r in rows:
