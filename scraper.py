@@ -23,7 +23,7 @@ from camoufox.sync_api import Camoufox
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-ITEM_ID_RE = re.compile(r"/item/([a-z0-9]+)", re.I)
+ITEM_ID_RE = re.compile(r"/item/(?:[^/?]+/)*([a-z0-9]+)(?:\?|$)", re.I)
 
 
 def load_config():
@@ -67,7 +67,9 @@ def scrape_items(page, url):
             for r in rows:
                 m = ITEM_ID_RE.search(r["href"])
                 if m:
-                    items.setdefault(m.group(1), r["text"][:220])
+                    href = r["href"]
+                    full_href = href if href.startswith("http") else f"https://www.yad2.co.il{href if href.startswith('/') else '/' + href}"
+                    items.setdefault(m.group(1), (r["text"][:220], full_href))
             if items:
                 return items
     raise RuntimeError("Could not extract listings (Radware challenge or markup change)")
@@ -100,7 +102,7 @@ def scrape(page, topic, url, token, chat_id):
         items = scrape_items(page, url)
         new_ids = check_new_items(topic, items)
         if new_ids:
-            lines = [f"{items[i]}\nhttps://www.yad2.co.il/item/{i}" for i in new_ids]
+            lines = [f"{items[i][0]}\n{items[i][1]}" for i in new_ids]
             msg = f"{len(new_ids)} new items:\n" + "\n----------\n".join(lines)
             send_telegram(token, chat_id, msg)
         else:
