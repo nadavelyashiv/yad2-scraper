@@ -40,13 +40,21 @@ def scrape(page, topic, url, token, chat_id):
     send_telegram(token, chat_id, f"Starting scanning {topic} on link:\n{url}")
     try:
         items = scrape_madlan_items(page, url)
-        new_ids = check_new_items(topic, items)
+        new_ids, updated_ids = check_new_items(topic, items)
+        
+        msg_parts = []
         if new_ids:
             lines = [f"{items[i][0]}\n{items[i][1]}" for i in new_ids]
-            msg = f"{len(new_ids)} new items:\n" + "\n----------\n".join(lines)
-            send_telegram(token, chat_id, msg)
+            msg_parts.append(f"🌟 {len(new_ids)} New items:\n" + "\n----------\n".join(lines))
+            
+        if updated_ids:
+            lines = [f"{items[i][0]}\n{items[i][1]}" for i in updated_ids]
+            msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price/Details changed):\n" + "\n----------\n".join(lines))
+            
+        if msg_parts:
+            send_telegram(token, chat_id, "\n\n".join(msg_parts))
         else:
-            send_telegram(token, chat_id, "No new items were added")
+            send_telegram(token, chat_id, "No new or updated items")
     except Exception as e:  # noqa: BLE001
         send_telegram(token, chat_id, f"Scan workflow failed... 😥\nError: {e}")
         raise

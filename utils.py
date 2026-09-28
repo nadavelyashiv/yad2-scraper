@@ -43,15 +43,30 @@ def check_new_items(topic, items):
         with open(path, encoding="utf-8") as f:
             saved = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        saved = []
-    saved_set = set(saved)
+        saved = {}
+
+    # Backwards compatibility: migrate old list format
+    if isinstance(saved, list):
+        saved = {i: "" for i in saved}
+
     current = list(items.keys())
-    new_ids = [i for i in current if i not in saved_set]
-    # keep only ids still live + the new ones (mirrors original pruning)
-    updated = [i for i in saved if i in items] + new_ids
-    if new_ids or updated != saved:
+    new_ids = []
+    updated_ids = []
+
+    for i in current:
+        if i not in saved:
+            new_ids.append(i)
+        elif saved[i] != items[i][0] and saved[i] != "":
+            # Only trigger update if we actually had previous text and it changed
+            updated_ids.append(i)
+
+    # State pruning: keep only currently visible items, save their latest text
+    updated_state = {i: items[i][0] for i in current}
+
+    if new_ids or updated_ids or updated_state != saved:
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(updated, f, ensure_ascii=False, indent=2)
+            json.dump(updated_state, f, ensure_ascii=False, indent=2)
         with open(os.path.join(os.path.dirname(__file__), "push_me"), "w") as f:
             f.write("")
-    return new_ids
+            
+    return new_ids, updated_ids
