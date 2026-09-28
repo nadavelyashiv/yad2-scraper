@@ -37,8 +37,8 @@ def send_telegram(token, chat_id, text):
             print(f"Telegram send failed: {e}")
 
 def check_new_items(topic, items):
-    os.makedirs(DATA_DIR, exist_ok=True)
     path = os.path.join(DATA_DIR, f"{topic}.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
         with open(path, encoding="utf-8") as f:
             saved = json.load(f)
