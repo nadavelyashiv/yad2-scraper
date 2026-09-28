@@ -35,7 +35,7 @@ def scrape_items(page, url):
         if title == "Radware Page":
             continue  # challenge not cleared yet
         rows = page.evaluate(
-            r"""() => Array.from(document.querySelectorAll('a[href*="/item/"]'))
+            r"""() => Array.from(document.querySelectorAll('div[class*="feedItemBox"] a[href*="/item/"]'))
                    .map(el => ({
                        href: el.getAttribute('href') || '',
                        text: (el.innerText || '').replace(/\n+/g, ' | ').trim()
