@@ -36,12 +36,26 @@ def send_telegram(token, chat_id, text):
         print("[telegram skipped — no token/chatId]\n" + text)
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20) as r:
-            r.read()
-    except Exception as e:  # noqa: BLE001
-        print(f"Telegram send failed: {e}")
+    
+    chunks = []
+    current_chunk = ""
+    for line in text.split('\n'):
+        if len(current_chunk) + len(line) + 1 > 4000:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = line + "\n"
+        else:
+            current_chunk += line + "\n"
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+        
+    for chunk in chunks:
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": chunk}).encode()
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20) as r:
+                r.read()
+        except Exception as e:  # noqa: BLE001
+            print(f"Telegram send failed: {e}")
 
 
 def scrape_items(page, url):
