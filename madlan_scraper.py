@@ -5,7 +5,47 @@ import re
 import time
 
 from camoufox.sync_api import Camoufox
-from utils import load_config, send_telegram, check_new_items
+from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message
+
+def parse_madlan_text(text):
+    """Normalize Madlan's A/B test layouts into a dict."""
+    parts = [p.strip() for p in text.split('|') if p.strip()]
+    
+    price = next((p for p in reversed(parts) if '₪' in p), "")
+    address = ""
+    rooms = ""
+    floor = ""
+    area = ""
+    
+    if len(parts) >= 5:
+        # New format
+        address = parts[1] if "ירידת מחיר" in parts[0] else parts[0]
+        for i, p in enumerate(parts):
+            if 'חד׳' in p and i > 0:
+                rooms = parts[i-1]
+            if 'קומה' in p and i > 0:
+                floor = parts[i-1]
+            if ('מ״ר' in p or 'מ"ר' in p) and i > 0:
+                area = parts[i-1]
+    else:
+        # Old format
+        price = next((p for p in parts if '₪' in p), price)
+        stats = next((p for p in parts if 'חד׳' in p), "")
+        if stats:
+            import re
+            m_rooms = re.search(r'([\d\.]+) חד', stats)
+            if m_rooms: rooms = m_rooms.group(1)
+            m_area = re.search(r'([\d\.]+) מ', stats)
+            if m_area: area = m_area.group(1)
+        address = next((p for p in parts if '₪' not in p and 'חד׳' not in p and "תיווך" not in p and "ירידת מחיר" not in p), "")
+        
+    return {
+        "address": address,
+        "rooms": rooms,
+        "floor": floor,
+        "area": area,
+        "price": price
+    }
 
 def scrape_madlan_items(page, url):
     """Return {item_id: text} for the listings on the page."""
@@ -33,7 +73,7 @@ def scrape_madlan_items(page, url):
                 m = re.search(r"/listings/([a-zA-Z0-9_-]+)", r["href"])
                 if m:
                     full_href = r["href"] if r["href"].startswith("http") else f"https://www.madlan.co.il{r['href'] if r['href'].startswith('/') else '/' + r['href']}"
-                    items.setdefault(m.group(1), (r["text"][:220], full_href))
+                    items.setdefault(m.group(1), (parse_madlan_text(r["text"][:220]), full_href))
             if items:
                 return items
     raise RuntimeError("Could not extract Madlan listings (markup change or challenge)")
@@ -47,11 +87,20 @@ def scrape(page, topic, url, token, chat_id):
         
         msg_parts = []
         if new_ids:
-            lines = [f"{items[i][0]}\n{items[i][1]}" for i in new_ids]
+            lines = []
+            for i in new_ids:
+                lines.append(format_apartment_message(items[i][0], items[i][1]))
             msg_parts.append(f"🌟 {len(new_ids)} New items:\n" + "\n----------\n".join(lines))
             
         if updated_ids:
-            lines = [f"{items[i][0]}\n{items[i][1]}" for i in updated_ids]
+            lines = []
+            for item in updated_ids:
+                if isinstance(item, tuple):
+                    i, changes = item
+                    lines.append(format_apartment_change_message(items[i][0], changes, items[i][1]))
+                else:
+                    i = item
+                    lines.append(format_apartment_message(items[i][0], items[i][1]))
             msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price/Details changed):\n" + "\n----------\n".join(lines))
             
         if msg_parts:
