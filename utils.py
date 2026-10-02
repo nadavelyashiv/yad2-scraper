@@ -6,6 +6,17 @@ import urllib.request
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
+def format_apartment_message(val, url):
+    if isinstance(val, dict):
+        return f"{val.get('address', '')} | {val.get('rooms', '')} חד׳ | קומה {val.get('floor', '')} | {val.get('area', '')} מ״ר | {val.get('price', '')}\n{url}"
+    return f"{val}\n{url}"
+
+def format_apartment_change_message(val, changes, url):
+    change_str = ", ".join(changes)
+    if isinstance(val, dict):
+        return f"[{change_str}]\n{val.get('address', '')} | {val.get('price', '')}\n{url}"
+    return f"[{change_str}]\n{val}\n{url}"
+
 def load_config():
     with open(CONFIG_PATH, encoding="utf-8") as f:
         return json.load(f)
@@ -56,9 +67,24 @@ def check_new_items(topic, items):
     for i in current:
         if i not in saved:
             new_ids.append(i)
-        elif saved[i] != items[i][0] and saved[i] != "":
-            # Only trigger update if we actually had previous text and it changed
-            updated_ids.append(i)
+        else:
+            old_val = saved[i]
+            new_val = items[i][0]
+            if isinstance(new_val, dict):
+                if isinstance(old_val, dict):
+                    changes = []
+                    for k in new_val:
+                        if k == "raw": continue
+                        if old_val.get(k) != new_val[k]:
+                            changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
+                    if changes:
+                        updated_ids.append((i, changes))
+                else:
+                    # Upgrade format from string to dict silently without alerting
+                    pass
+            elif old_val != new_val and old_val != "":
+                # Fallback for old string comparison
+                updated_ids.append(i)
 
     # State pruning: keep only currently visible items, save their latest text
     updated_state = {i: items[i][0] for i in current}
