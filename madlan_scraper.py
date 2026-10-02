@@ -18,8 +18,11 @@ def parse_madlan_text(text):
     floor = ""
     area = ""
     
-    if len(parts) >= 5:
-        # New format
+    # Robust heuristic: check if 'חד׳' is a standalone element
+    is_separated = any(p == 'חד׳' for p in parts)
+    
+    if is_separated:
+        # "Separated" format (e.g. '4 | חד׳ | 5 | קומה | 100 | מ״ר')
         address = parts[1] if "ירידת מחיר" in parts[0] else parts[0]
         for i, p in enumerate(parts):
             if 'חד׳' in p and i > 0:
@@ -29,17 +32,47 @@ def parse_madlan_text(text):
             if ('מ״ר' in p or 'מ"ר' in p) and i > 0:
                 area = parts[i-1]
     else:
-        # Old format
-        price = next((p for p in parts if '₪' in p), price)
+        # "Squashed" format (e.g. '4 חד׳קומה 5100 מ"ר' or '4.5 חד׳קומת קרקע107 מ"ר')
         stats = next((p for p in parts if 'חד׳' in p), "")
+        
+        # Address is usually the part that doesn't look like stats, price, or 'תיווך'
+        candidates = [p for p in parts if '₪' not in p and 'חד׳' not in p and 'תיווך' not in p and 'ירידת מחיר' not in p]
+        if candidates:
+            address = candidates[0]
+            
         if stats:
             import re
-            m_rooms = re.search(r'([\d\.]+) חד', stats)
-            if m_rooms: rooms = m_rooms.group(1)
-            m_area = re.search(r'([\d\.]+) מ', stats)
-            if m_area: area = m_area.group(1)
-        address = next((p for p in parts if '₪' not in p and 'חד׳' not in p and "תיווך" not in p and "ירידת מחיר" not in p), "")
-        
+            m_rooms = re.search(r'([\d\.]+)\s*חד', stats)
+            if m_rooms:
+                rooms = m_rooms.group(1)
+            
+            # Floor could be 'קרקע' (ground)
+            m_floor_area = re.search(r'קומ[הת]\s*(קרקע|[א-ת]+)?\s*(-?\d+)\s*מ', stats)
+            if m_floor_area and m_floor_area.group(1):
+                floor = m_floor_area.group(1)
+                area = m_floor_area.group(2)
+            else:
+                m_digits = re.search(r'קומ[הת]\s*(-?\d+)\s*מ', stats)
+                if m_digits:
+                    digits = m_digits.group(1)
+                    possible_splits = []
+                    start_idx = 1 if digits.startswith('-') else 0
+                    # Try splitting into floor and area (area is usually 2+ digits)
+                    for i in range(start_idx + 1, len(digits)):
+                        f = digits[:i]
+                        a = digits[i:]
+                        if not a.startswith('0') and len(a) >= 2:
+                            possible_splits.append((f, a))
+                    if possible_splits:
+                        floor, area = possible_splits[-1] # pick split with shortest valid area / longest floor
+                    else:
+                        area = digits
+                else:
+                    # No floor found, just area
+                    m_area = re.search(r'(-?\d+)\s*מ', stats)
+                    if m_area:
+                        area = m_area.group(1)
+
     return {
         "address": address,
         "rooms": rooms,
@@ -104,7 +137,7 @@ def scrape(page, topic, url, token, chat_id):
                 else:
                     i = item
                     lines.append(format_apartment_message(items[i][0], items[i][1]))
-            msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price/Details changed):\n" + "\n----------\n".join(lines))
+            msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price changed):\n" + "\n----------\n".join(lines))
             
         if msg_parts:
             send_telegram(token, chat_id, "\n\n".join(msg_parts))

@@ -136,7 +136,7 @@ def scrape(page, topic, url, token, chat_id):
                 else:
                     i = item
                     lines.append(format_apartment_message(items[i][0], items[i][1]))
-            msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price/Details changed):\n" + "\n----------\n".join(lines))
+            msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price changed):\n" + "\n----------\n".join(lines))
             
         if msg_parts:
             send_telegram(token, chat_id, "\n\n".join(msg_parts))
