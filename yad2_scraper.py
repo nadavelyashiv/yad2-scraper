@@ -112,7 +112,7 @@ def scrape_items(page, url):
 
 
 def scrape(page, topic, url, token, chat_id):
-    send_telegram(token, chat_id, f"Starting scanning {topic} on link:\n{url}")
+    send_telegram(token, chat_id, f'Starting scanning {topic} on <a href="{url}">link</a>', parse_mode="HTML")
     try:
         items = scrape_items(page, url)
         new_ids, updated_ids = check_new_items(topic, items)

@@ -21,7 +21,7 @@ def load_config():
     with open(CONFIG_PATH, encoding="utf-8") as f:
         return json.load(f)
 
-def send_telegram(token, chat_id, text):
+def send_telegram(token, chat_id, text, parse_mode=None):
     if not token or not chat_id:
         print("[telegram skipped — no token/chatId]\n" + text)
         return
@@ -40,7 +40,10 @@ def send_telegram(token, chat_id, text):
         chunks.append(current_chunk.strip())
         
     for chunk in chunks:
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": chunk}).encode()
+        payload = {"chat_id": chat_id, "text": chunk}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        data = urllib.parse.urlencode(payload).encode()
         try:
             with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20) as r:
                 r.read()
