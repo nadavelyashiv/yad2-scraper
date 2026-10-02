@@ -78,8 +78,7 @@ def parse_madlan_text(text):
         "rooms": rooms,
         "floor": floor,
         "area": area,
-        "price": price,
-        "raw": text
+        "price": price
     }
 
 def scrape_madlan_items(page, url):
