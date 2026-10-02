@@ -8,3 +8,5 @@ push_me
 __pycache__
 *.pyc
 .venv
+
+.codegraph

@@ -6,15 +6,24 @@ import urllib.request
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
+def generate_raw_string(val: dict) -> str:
+    parts = []
+    if val.get('address'): parts.append(val['address'])
+    if val.get('rooms'): parts.append(f"{val['rooms']} חד׳")
+    if val.get('floor'): parts.append(f"קומה {val['floor']}")
+    if val.get('area'): parts.append(f"{val['area']} מ״ר")
+    if val.get('price'): parts.append(val['price'])
+    return " | ".join(parts)
+
 def format_apartment_message(val, url):
     if isinstance(val, dict):
-        return f"{val.get('address', '')} | {val.get('rooms', '')} חד׳ | קומה {val.get('floor', '')} | {val.get('area', '')} מ״ר | {val.get('price', '')}\n{url}"
+        return f"{generate_raw_string(val)}\n{url}"
     return f"{val}\n{url}"
 
 def format_apartment_change_message(val, changes, url):
     change_str = ", ".join(changes)
     if isinstance(val, dict):
-        return f"[{change_str}]\n{val.get('address', '')} | {val.get('price', '')}\n{url}"
+        return f"[{change_str}]\n{generate_raw_string(val)}\n{url}"
     return f"[{change_str}]\n{val}\n{url}"
 
 def load_config():
@@ -94,7 +103,7 @@ def check_new_items(topic, items, parser=None):
                         if changes:
                             updated_ids.append((i, changes))
                     else:
-                        raw_new = new_val.get("raw", "")
+                        raw_new = generate_raw_string(new_val)
                         old_val_norm = old_val.replace('\n', '|')
                         if old_val_norm != raw_new and old_val != "":
                             updated_ids.append(i)

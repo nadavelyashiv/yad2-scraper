@@ -74,8 +74,7 @@ def parse_yad2_text(text):
         "rooms": rooms,
         "floor": floor,
         "area": area,
-        "price": price,
-        "raw": text
+        "price": price
     }
 
 def scrape_items(page, url):
