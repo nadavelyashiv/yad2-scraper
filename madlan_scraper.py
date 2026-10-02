@@ -9,6 +9,7 @@ from utils import load_config, send_telegram, check_new_items, format_apartment_
 
 def parse_madlan_text(text):
     """Normalize Madlan's A/B test layouts into a dict."""
+    text = text.replace('\n', '|')
     parts = [p.strip() for p in text.split('|') if p.strip()]
     
     price = next((p for p in reversed(parts) if '₪' in p), "")
@@ -44,7 +45,8 @@ def parse_madlan_text(text):
         "rooms": rooms,
         "floor": floor,
         "area": area,
-        "price": price
+        "price": price,
+        "raw": text
     }
 
 def scrape_madlan_items(page, url):
@@ -73,17 +75,18 @@ def scrape_madlan_items(page, url):
                 m = re.search(r"/listings/([a-zA-Z0-9_-]+)", r["href"])
                 if m:
                     full_href = r["href"] if r["href"].startswith("http") else f"https://www.madlan.co.il{r['href'] if r['href'].startswith('/') else '/' + r['href']}"
-                    items.setdefault(m.group(1), (parse_madlan_text(r["text"][:220]), full_href))
+                    items.setdefault(m.group(1), (parse_madlan_text(r["text"]), full_href))
             if items:
                 return items
     raise RuntimeError("Could not extract Madlan listings (markup change or challenge)")
 
 
 def scrape(page, topic, url, token, chat_id):
-    send_telegram(token, chat_id, f'Starting scanning {topic} on <a href="{url}">link</a>', parse_mode="HTML")
+    import html
+    send_telegram(token, chat_id, f'Starting scanning {topic} on <a href="{html.escape(url)}">link</a>', parse_mode="HTML")
     try:
         items = scrape_madlan_items(page, url)
-        new_ids, updated_ids = check_new_items(topic, items)
+        new_ids, updated_ids = check_new_items(topic, items, parse_madlan_text)
         
         msg_parts = []
         if new_ids:

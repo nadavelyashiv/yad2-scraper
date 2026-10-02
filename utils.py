@@ -28,16 +28,19 @@ def send_telegram(token, chat_id, text, parse_mode=None):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     
     chunks = []
-    current_chunk = ""
-    for line in text.split('\n'):
-        if len(current_chunk) + len(line) + 1 > 4000:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            current_chunk = line + "\n"
-        else:
-            current_chunk += line + "\n"
-    if current_chunk.strip():
-        chunks.append(current_chunk.strip())
+    if len(text) <= 4000:
+        chunks = [text]
+    else:
+        current_chunk = ""
+        for line in text.split('\n'):
+            if len(current_chunk) + len(line) + 1 > 4000:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = line + "\n"
+            else:
+                current_chunk += line + "\n"
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
         
     for chunk in chunks:
         payload = {"chat_id": chat_id, "text": chunk}
@@ -50,7 +53,7 @@ def send_telegram(token, chat_id, text, parse_mode=None):
         except Exception as e:  # noqa: BLE001
             print(f"Telegram send failed: {e}")
 
-def check_new_items(topic, items):
+def check_new_items(topic, items, parser=None):
     path = os.path.join(DATA_DIR, f"{topic}.json")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
@@ -83,8 +86,20 @@ def check_new_items(topic, items):
                     if changes:
                         updated_ids.append((i, changes))
                 else:
-                    # Upgrade format from string to dict silently without alerting
-                    pass
+                    if parser:
+                        old_dict = parser(old_val)
+                        changes = []
+                        for k in new_val:
+                            if k == "raw": continue
+                            if old_dict.get(k) != new_val[k]:
+                                changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
+                        if changes:
+                            updated_ids.append((i, changes))
+                    else:
+                        raw_new = new_val.get("raw", "")
+                        old_val_norm = old_val.replace('\n', '|')
+                        if old_val_norm != raw_new and old_val != "":
+                            updated_ids.append(i)
             elif old_val != new_val and old_val != "":
                 # Fallback for old string comparison
                 updated_ids.append(i)
