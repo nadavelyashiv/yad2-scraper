@@ -80,8 +80,7 @@ def check_new_items(topic, items, parser=None):
                 if isinstance(old_val, dict):
                     changes = []
                     for k in new_val:
-                        if k == "raw": continue
-                        if old_val.get(k) != new_val[k]:
+                        if k == "price" and old_val.get(k) != new_val[k]:
                             changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
                     if changes:
                         updated_ids.append((i, changes))
@@ -90,8 +89,7 @@ def check_new_items(topic, items, parser=None):
                         old_dict = parser(old_val)
                         changes = []
                         for k in new_val:
-                            if k == "raw": continue
-                            if old_dict.get(k) != new_val[k]:
+                            if k == "price" and old_dict.get(k) != new_val[k]:
                                 changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
                         if changes:
                             updated_ids.append((i, changes))
