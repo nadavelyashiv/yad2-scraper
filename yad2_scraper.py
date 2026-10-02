@@ -27,6 +27,7 @@ ITEM_ID_RE = re.compile(r"/item/(?:[^/?]+/)*([a-z0-9]+)(?:\?|$)", re.I)
 def parse_yad2_text(text):
     """Normalize Yad2 layout into a dict."""
     import re
+    text = text.replace('\n', '|')
     parts = [p.strip() for p in text.split('|') if p.strip()]
     price = ""
     address = ""
@@ -73,7 +74,8 @@ def parse_yad2_text(text):
         "rooms": rooms,
         "floor": floor,
         "area": area,
-        "price": price
+        "price": price,
+        "raw": text
     }
 
 def scrape_items(page, url):
@@ -105,17 +107,18 @@ def scrape_items(page, url):
                 if m:
                     href = r["href"]
                     full_href = href if href.startswith("http") else f"https://www.yad2.co.il{href if href.startswith('/') else '/' + href}"
-                    items.setdefault(m.group(1), (parse_yad2_text(r["text"][:220]), full_href))
+                    items.setdefault(m.group(1), (parse_yad2_text(r["text"]), full_href))
             if items:
                 return items
     raise RuntimeError("Could not extract listings (Radware challenge or markup change)")
 
 
 def scrape(page, topic, url, token, chat_id):
-    send_telegram(token, chat_id, f"Starting scanning {topic} on link:\n{url}")
+    import html
+    send_telegram(token, chat_id, f'Starting scanning {topic} on <a href="{html.escape(url)}">link</a>', parse_mode="HTML")
     try:
         items = scrape_items(page, url)
-        new_ids, updated_ids = check_new_items(topic, items)
+        new_ids, updated_ids = check_new_items(topic, items, parse_yad2_text)
         
         msg_parts = []
         if new_ids:
