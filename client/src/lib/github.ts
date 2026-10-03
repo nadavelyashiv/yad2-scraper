@@ -93,7 +93,7 @@ export async function triggerScraperWorkflow(token: string) {
 
 export async function fetchLatestWorkflowRun(token: string) {
   const headers = { Authorization: `token ${token}` };
-  const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/runs?per_page=1`, { headers });
+  const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/scraper.yaml/runs?per_page=1`, { headers });
   if (!res.ok) throw new Error('Failed to fetch runs');
   const data = await res.json();
   return data.workflow_runs[0];
