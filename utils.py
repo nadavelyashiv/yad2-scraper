@@ -96,7 +96,8 @@ def check_new_items(topic, items, parser=None):
                     changes = []
                     for k in new_val:
                         if k == "price" and old_val.get(k) != new_val[k]:
-                            changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
+                            if old_val.get(k) != "":
+                                changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
                     if changes:
                         updated_ids.append((i, changes))
                 else:
@@ -105,7 +106,8 @@ def check_new_items(topic, items, parser=None):
                         changes = []
                         for k in new_val:
                             if k == "price" and old_dict.get(k) != new_val[k]:
-                                changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
+                                if old_dict.get(k) != "":
+                                    changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
                         if changes:
                             updated_ids.append((i, changes))
                     else:
@@ -158,7 +160,7 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
         try:
             print(f"Attempting parsing with Groq ({groq_model})...")
             completion = groq_client.chat.completions.create(
-                model=groq_model,
+                model="llama-3.1-70b-versatile",
                 messages=[
                     {
                         "role": "system", 
@@ -173,7 +175,8 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
             print("Groq parsing failed, falling back to Gemini...", e)
 
     if gemini_client:
-        for model_name in gemini_models:
+        models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.8-flash']
+        for model_name in models_to_try:
             try:
                 print(f"Attempting parsing with {model_name}...")
                 response = gemini_client.models.generate_content(
@@ -219,7 +222,9 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
         if item_id in saved:
             old_val = saved[item_id]
             if isinstance(old_val, dict) and old_val.get("_raw_text") == raw_text:
-                parsed_data = dict(old_val)
+                is_empty = not any(old_val.get(k) for k in ["address", "rooms", "floor", "price", "type", "area"])
+                if not is_empty:
+                    parsed_data = dict(old_val)
                 
         if not parsed_data:
             if gemini_client or groq_client:

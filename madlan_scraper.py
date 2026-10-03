@@ -1,57 +1,50 @@
 #!/usr/bin/env python3
-"""Madlan scraper (Camoufox edition)."""
+"""Madlan scraper."""
 import os
 import re
-import time
 
-from camoufox.sync_api import Camoufox
+from curl_cffi import requests
+from bs4 import BeautifulSoup
+
 from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
 
-
-
-def scrape_madlan_items(page, url):
+def scrape_madlan_items(url):
     """Return {item_id: text} for the listings on the page."""
-    page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    for _ in range(15):
-        time.sleep(2)
-        try:
-            if not page.evaluate("() => !!document.body"):
-                continue
-            rows = page.evaluate(
-                r"""() => Array.from(document.querySelectorAll('div[data-auto="listed-bulletin"]'))
-                       .map(el => {
-                           const linkEl = el.querySelector('a[data-auto="listed-bulletin-clickable"]');
-                           const href = linkEl ? linkEl.getAttribute('href') : '';
-                           const text = (el.innerText || '').replace(/\n+/g, ' | ').trim();
-                           return { href, text };
-                       })
-                       .filter(r => r.text.length > 10 && r.href)"""
-            )
-        except Exception:
-            continue
-        if rows:
-            items = {}
-            for r in rows:
-                m = re.search(r"/listings/([a-zA-Z0-9_-]+)", r["href"])
-                if m:
-                    full_href = r["href"] if r["href"].startswith("http") else f"https://www.madlan.co.il{r['href'] if r['href'].startswith('/') else '/' + r['href']}"
-                    items.setdefault(m.group(1), (r["text"], full_href))
-            if items:
-                return items
-    try:
-        page.screenshot(path="madlan_error.png")
-        with open("madlan_error.html", "w", encoding="utf-8") as f:
-            f.write(page.content())
-    except Exception:
-        pass
+    r = requests.get(url, impersonate="chrome110")
+    soup = BeautifulSoup(r.text, "html.parser")
+    links = soup.find_all("a", attrs={"data-auto": "listed-bulletin-clickable"})
+    if not links:
+        # Fallback to all links containing /listings/
+        all_links = soup.find_all("a", href=True)
+        links = [a for a in all_links if "/listings/" in a.get("href")]
+    
+    items = {}
+    for a in links:
+        href = a.get("href", "")
+        text = a.get_text(separator=" | ", strip=True)
+        
+        if len(text) < 10 and a.parent:
+            text = a.parent.get_text(separator=" | ", strip=True)
+        if len(text) < 10 and a.parent and a.parent.parent:
+            text = a.parent.parent.get_text(separator=" | ", strip=True)
+            
+        if len(text) > 10 and "/listings/" in href:
+            m = re.search(r"/listings/([a-zA-Z0-9_-]+)", href)
+            if m:
+                full_href = href if href.startswith("http") else f"https://www.madlan.co.il{href if href.startswith('/') else '/' + href}"
+                items.setdefault(m.group(1), (text, full_href))
+                
+    if items:
+        return items
+    
     raise RuntimeError("Could not extract Madlan listings (markup change or challenge)")
 
 
-def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
+def scrape(topic, url, token, chat_id, api_key, groq_api_key):
     import html
     start_msg = f'Starting scanning {topic} on <a href="{html.escape(url)}">link</a>'
     try:
-        raw_items = scrape_madlan_items(page, url)
+        raw_items = scrape_madlan_items(url)
         items = process_items_with_llm(raw_items, topic, None, api_key, groq_api_key)
         new_ids, updated_ids = check_new_items(topic, items)
         
@@ -100,10 +93,8 @@ def main():
         print("No enabled Madlan projects in config.json")
         return
     
-    with Camoufox(headless=True, window=(1400, 1000)) as browser:
-        page = browser.new_page()
-        for p in projects:
-            scrape(page, p["topic"], p["url"], token, chat_id, api_key, groq_api_key)
+    for p in projects:
+        scrape(p["topic"], p["url"], token, chat_id, api_key, groq_api_key)
 
 
 if __name__ == "__main__":
