@@ -3,3 +3,5 @@ google-genai
 pydantic
 python-dotenv
 groq
+curl_cffi
+beautifulsoup4
