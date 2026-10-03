@@ -11,3 +11,4 @@ __pycache__
 
 .codegraph
 .env
+scraper.log

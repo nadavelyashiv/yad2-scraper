@@ -1,6 +1,6 @@
 import os
 import glob
-from utils import load_config, DATA_DIR
+from utils import logger, load_config, DATA_DIR
 
 def clean_redundant_caches():
     config = load_config()
@@ -22,7 +22,7 @@ def clean_redundant_caches():
         topic = topic.replace(os.sep, "/") # Normalize path separators
         
         if topic not in active_topics:
-            print(f"Removing redundant cache file: {file_path}")
+            logger.info(f"Removing redundant cache file: {file_path}")
             os.remove(file_path)
             
             # Remove empty parent directories if any

@@ -2,6 +2,23 @@ import json
 import os
 import urllib.parse
 import urllib.request
+import logging
+import sys
+
+logger = logging.getLogger("scraper")
+logger.setLevel(logging.DEBUG)
+
+fh = logging.FileHandler("scraper.log", encoding="utf-8")
+fh.setLevel(logging.DEBUG)
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+logger.addHandler(fh)
+logger.addHandler(ch)
+
+
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -38,7 +55,7 @@ def load_config():
 
 def send_telegram(token, chat_id, text, parse_mode=None):
     if not token or not chat_id:
-        print("[telegram skipped — no token/chatId]\n" + text)
+        logger.info("[telegram skipped — no token/chatId]\n" + text)
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     
@@ -66,7 +83,7 @@ def send_telegram(token, chat_id, text, parse_mode=None):
             with urllib.request.urlopen(urllib.request.Request(url, data=data), timeout=20) as r:
                 r.read()
         except Exception as e:  # noqa: BLE001
-            print(f"Telegram send failed: {e}")
+            logger.error(f"Telegram send failed: {e}")
 
 def check_new_items(topic, items, parser=None):
     path = os.path.join(DATA_DIR, f"{topic}.json")
@@ -158,7 +175,7 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
     
     if groq_client:
         try:
-            print(f"Attempting parsing with Groq ({groq_model})...")
+            logger.info(f"Attempting parsing with Groq ({groq_model})...")
             completion = groq_client.chat.completions.create(
                 model="llama-3.1-70b-versatile",
                 messages=[
@@ -172,13 +189,13 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
             )
             return json.loads(completion.choices[0].message.content)
         except Exception as e:
-            print("Groq parsing failed, falling back to Gemini...", e)
+            logger.warning(f"Groq parsing failed, falling back to Gemini... {e}")
 
     if gemini_client:
         models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.8-flash']
         for model_name in models_to_try:
             try:
-                print(f"Attempting parsing with {model_name}...")
+                logger.info(f"Attempting parsing with {model_name}...")
                 response = gemini_client.models.generate_content(
                     model=model_name,
                     contents=prompt,
@@ -190,13 +207,13 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
                 return json.loads(response.text)
             except genai.errors.ClientError as e:
                 if e.code == 429:
-                    print(f"Rate limit reached for {model_name} (429).")
+                    logger.warning(f"Rate limit reached for {model_name} (429).")
                 else:
-                    print(f"{model_name} API Error:", e)
+                    logger.error(f"{model_name} API Error: {e}")
             except Exception as e:
-                print(f"Unknown error with {model_name}:", e)
+                logger.error(f"Unknown error with {model_name}: {e}")
                 
-    print("All LLM parsing attempts failed.")
+    logger.error("All LLM parsing attempts failed.")
     return {
         "address": "", "rooms": "", "floor": "", "area": "", "price": "", "type": ""
     }
@@ -228,11 +245,11 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
                 
         if not parsed_data:
             if gemini_client or groq_client:
-                print(f"Parsing item {item_id} with LLM...")
+                logger.info(f"Parsing item {item_id} with LLM...\nRaw text:\n{raw_text}")
                 parsed_data = parse_with_llm(gemini_client, groq_client, raw_text)
                 parsed_data["_raw_text"] = raw_text
             else:
-                print("No LLM API key, skipping parsing.")
+                logger.warning("No LLM API key, skipping parsing.")
                 continue
                 
         passes = True
