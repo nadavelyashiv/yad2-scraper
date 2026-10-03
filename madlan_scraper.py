@@ -3,15 +3,18 @@
 import os
 import re
 
-from curl_cffi import requests
+import time
+from camoufox.sync_api import Camoufox
 from bs4 import BeautifulSoup
 
 from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
 
-def scrape_madlan_items(url):
+def scrape_madlan_items(page, url):
     """Return {item_id: text} for the listings on the page."""
-    r = requests.get(url, impersonate="chrome110")
-    soup = BeautifulSoup(r.text, "html.parser")
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    time.sleep(4)
+    html_content = page.content()
+    soup = BeautifulSoup(html_content, "html.parser")
     links = soup.find_all("a", attrs={"data-auto": "listed-bulletin-clickable"})
     if not links:
         # Fallback to all links containing /listings/
@@ -40,11 +43,11 @@ def scrape_madlan_items(url):
     raise RuntimeError("Could not extract Madlan listings (markup change or challenge)")
 
 
-def scrape(topic, url, token, chat_id, api_key, groq_api_key):
+def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
     import html
     start_msg = f'Starting scanning {topic} on <a href="{html.escape(url)}">link</a>'
     try:
-        raw_items = scrape_madlan_items(url)
+        raw_items = scrape_madlan_items(page, url)
         items = process_items_with_llm(raw_items, topic, None, api_key, groq_api_key)
         new_ids, updated_ids = check_new_items(topic, items)
         
@@ -93,8 +96,10 @@ def main():
         logger.info("No enabled Madlan projects in config.json")
         return
     
-    for p in projects:
-        scrape(p["topic"], p["url"], token, chat_id, api_key, groq_api_key)
+    with Camoufox(headless=True, window=(1400, 1000)) as browser:
+        page = browser.new_page()
+        for p in projects:
+            scrape(page, p["topic"], p["url"], token, chat_id, api_key, groq_api_key)
 
 
 if __name__ == "__main__":
