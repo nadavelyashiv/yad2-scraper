@@ -110,6 +110,12 @@ def scrape_madlan_items(page, url):
                     items.setdefault(m.group(1), (parse_madlan_text(r["text"]), full_href))
             if items:
                 return items
+    try:
+        page.screenshot(path="madlan_error.png")
+        with open("madlan_error.html", "w", encoding="utf-8") as f:
+            f.write(page.content())
+    except Exception:
+        pass
     raise RuntimeError("Could not extract Madlan listings (markup change or challenge)")
 
 
@@ -158,7 +164,7 @@ def main():
     if not projects:
         print("No enabled Madlan projects in config.json")
         return
-    with Camoufox(headless=True, window=(1400, 1000)) as browser:
+    with Camoufox(headless=True, humanize=True, window=(1400, 1000)) as browser:
         page = browser.new_page()
         for p in projects:
             scrape(page, p["topic"], p["url"], token, chat_id)
