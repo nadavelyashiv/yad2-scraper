@@ -114,17 +114,17 @@ def scrape_items(page, url):
 
 def scrape(page, topic, url, token, chat_id):
     import html
-    send_telegram(token, chat_id, f'Starting scanning {topic} on <a href="{html.escape(url)}">link</a>', parse_mode="HTML")
+    start_msg = f'Starting scanning {topic} on <a href="{html.escape(url)}">link</a>'
     try:
         items = scrape_items(page, url)
         new_ids, updated_ids = check_new_items(topic, items, parse_yad2_text)
         
-        msg_parts = []
+        results = []
         if new_ids:
             lines = []
             for i in new_ids:
                 lines.append(format_apartment_message(items[i][0], items[i][1]))
-            msg_parts.append(f"🌟 {len(new_ids)} New items:\n" + "\n----------\n".join(lines))
+            results.append(f"🌟 {len(new_ids)} New items:\n" + "\n----------\n".join(lines))
             
         if updated_ids:
             lines = []
@@ -135,12 +135,15 @@ def scrape(page, topic, url, token, chat_id):
                 else:
                     i = item
                     lines.append(format_apartment_message(items[i][0], items[i][1]))
-            msg_parts.append(f"🔄 {len(updated_ids)} Updated items (Price changed):\n" + "\n----------\n".join(lines))
+            results.append(f"🔄 {len(updated_ids)} Updated items (Price changed):\n" + "\n----------\n".join(lines))
             
-        if msg_parts:
-            send_telegram(token, chat_id, "\n\n".join(msg_parts))
+        if results:
+            safe_results = [html.escape(r) for r in results]
+            final_msg = start_msg + "\n\n" + "\n\n".join(safe_results)
         else:
-            send_telegram(token, chat_id, "No new or updated items")
+            final_msg = start_msg + "\n\nNo new or updated items"
+            
+        send_telegram(token, chat_id, final_msg, parse_mode="HTML")
     except Exception as e:  # noqa: BLE001
         send_telegram(token, chat_id, f"Scan workflow failed... 😥\nError: {e}")
         raise
