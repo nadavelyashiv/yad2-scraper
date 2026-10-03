@@ -96,7 +96,8 @@ def check_new_items(topic, items, parser=None):
                     changes = []
                     for k in new_val:
                         if k == "price" and old_val.get(k) != new_val[k]:
-                            changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
+                            if old_val.get(k) != "":
+                                changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
                     if changes:
                         updated_ids.append((i, changes))
                 else:
@@ -105,7 +106,8 @@ def check_new_items(topic, items, parser=None):
                         changes = []
                         for k in new_val:
                             if k == "price" and old_dict.get(k) != new_val[k]:
-                                changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
+                                if old_dict.get(k) != "":
+                                    changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
                         if changes:
                             updated_ids.append((i, changes))
                     else:
@@ -215,7 +217,9 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
         if item_id in saved:
             old_val = saved[item_id]
             if isinstance(old_val, dict) and old_val.get("_raw_text") == raw_text:
-                parsed_data = dict(old_val)
+                is_empty = not any(old_val.get(k) for k in ["address", "rooms", "floor", "price", "type", "area"])
+                if not is_empty:
+                    parsed_data = dict(old_val)
                 
         if not parsed_data:
             if gemini_client or groq_client:
