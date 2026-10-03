@@ -34,8 +34,12 @@ jobs:
         run: |
           export API_TOKEN=${{ secrets.API_TOKEN }}
           export CHAT_ID=${{ secrets.CHAT_ID }}
+          export FB_C_USER=${{ secrets.FB_C_USER }}
+          export FB_XS=${{ secrets.FB_XS }}
+          export GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           python yad2_scraper.py &
           python madlan_scraper.py &
+          python facebook_scraper.py &
           wait
 
       - name: Push new json data if needed
