@@ -5,13 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { Play } from 'lucide-react';
 import DataViewer from './components/DataViewer';
 import ConfigEditor from './components/ConfigEditor';
+import { triggerScraperWorkflow } from './lib/github';
 
 function App() {
   const { toast } = useToast();
   const [token, setToken] = useState(() => localStorage.getItem('github_pat') || '');
   const [draftToken, setDraftToken] = useState(token);
+  const [isTriggering, setIsTriggering] = useState(false);
 
   const saveToken = () => {
     localStorage.setItem('github_pat', draftToken);
@@ -19,10 +22,33 @@ function App() {
     toast({ title: 'Token Saved', description: 'GitHub PAT has been saved to local storage.' });
   };
 
+  const handleRunScraper = async () => {
+    if (!token) {
+      toast({ title: 'Missing Token', description: 'Please configure your GitHub PAT in Settings first.', variant: 'destructive' });
+      return;
+    }
+    
+    setIsTriggering(true);
+    try {
+      await triggerScraperWorkflow(token);
+      toast({ title: 'Scraper Triggered', description: 'The scraper workflow has been started successfully on GitHub.' });
+    } catch (err: any) {
+      toast({ title: 'Failed to trigger scraper', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsTriggering(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-8">
       <div className="max-w-6xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight">Yad2 Scraper Dashboard</h1>
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold tracking-tight">Yad2 Scraper Dashboard</h1>
+          <Button onClick={handleRunScraper} disabled={isTriggering || !token}>
+            <Play className="w-4 h-4 mr-2" />
+            {isTriggering ? 'Triggering...' : 'Run Scraper'}
+          </Button>
+        </div>
         
         <Tabs defaultValue="data" className="w-full">
           <TabsList className="mb-4">

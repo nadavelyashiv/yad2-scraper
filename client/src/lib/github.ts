@@ -63,3 +63,30 @@ export async function commitFile(path: string, content: string, sha: string, mes
   }
   return res.json();
 }
+
+export async function triggerScraperWorkflow(token: string) {
+  const headers = {
+    Authorization: `token ${token}`,
+    Accept: 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+
+  const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/scraper.yaml/dispatches`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      ref: BRANCH,
+    }),
+  });
+
+  if (!res.ok) {
+    let errorMessage = res.statusText;
+    try {
+      const errorData = await res.json();
+      if (errorData.message) errorMessage = errorData.message;
+    } catch (e) {
+      // Ignore JSON parse error
+    }
+    throw new Error(`Failed to trigger workflow: ${errorMessage}`);
+  }
+}
