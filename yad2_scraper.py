@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 
 from camoufox.sync_api import Camoufox
-from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
+from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
 
 ITEM_ID_RE = re.compile(r"/item/(?:[^/?]+/)*([a-z0-9]+)(?:\?|$)", re.I)
 
@@ -109,9 +109,9 @@ def main():
     projects = [p for p in config.get("yad2Projects", []) if p.get("enabled")]
     for p in config.get("yad2Projects", []):
         if not p.get("enabled"):
-            print(f'Topic "{p.get("topic")}" is disabled. Skipping.')
+            logger.info(f'Topic "{p.get("topic")}" is disabled. Skipping.')
     if not projects:
-        print("No enabled Yad2 projects in config.json")
+        logger.info("No enabled Yad2 projects in config.json")
         return
     with Camoufox(headless=True, window=(1400, 1000)) as browser:
         page = browser.new_page()

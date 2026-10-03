@@ -53,3 +53,11 @@ jobs:
             git commit -m "updated data - $DATE"
             git push
           fi
+
+      - name: Upload scraper logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-logs
+          path: scraper.log
+          retention-days: 7

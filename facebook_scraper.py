@@ -9,7 +9,7 @@ from google import genai
 from pydantic import BaseModel, Field
 from groq import Groq
 
-from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, DATA_DIR
+from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, DATA_DIR
 
 def scrape_facebook_items(page, url):
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -43,7 +43,7 @@ def scrape_facebook_items(page, url):
             }"""
         )
     except Exception as e:
-        print("Error extracting from DOM:", e)
+        logger.error(f"Error extracting from DOM: {e}")
         rows = []
         
     items = {}
@@ -115,10 +115,10 @@ def main():
     projects = [p for p in config.get("facebookProjects", []) if p.get("enabled")]
     for p in config.get("facebookProjects", []):
         if not p.get("enabled"):
-            print(f'Topic "{p.get("topic")}" is disabled. Skipping.')
+            logger.info(f'Topic "{p.get("topic")}" is disabled. Skipping.')
             
     if not projects:
-        print("No enabled Facebook projects in config.json")
+        logger.info("No enabled Facebook projects in config.json")
         return
         
     c_user = os.environ.get("FB_C_USER")

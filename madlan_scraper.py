@@ -6,7 +6,7 @@ import re
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
-from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
+from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
 
 def scrape_madlan_items(url):
     """Return {item_id: text} for the listings on the page."""
@@ -88,9 +88,9 @@ def main():
     projects = [p for p in config.get("madlanProjects", []) if not p.get("disabled")]
     for p in config.get("madlanProjects", []):
         if p.get("disabled"):
-            print(f'Topic "{p.get("topic")}" is disabled. Skipping.')
+            logger.info(f'Topic "{p.get("topic")}" is disabled. Skipping.')
     if not projects:
-        print("No enabled Madlan projects in config.json")
+        logger.info("No enabled Madlan projects in config.json")
         return
     
     for p in projects:
