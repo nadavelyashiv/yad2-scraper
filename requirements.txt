@@ -2,3 +2,4 @@ camoufox[geoip]
 google-genai
 pydantic
 python-dotenv
+groq

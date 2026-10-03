@@ -7,6 +7,7 @@ import time
 from camoufox.sync_api import Camoufox
 from google import genai
 from pydantic import BaseModel, Field
+from groq import Groq
 
 from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, DATA_DIR
 
@@ -18,38 +19,58 @@ class ApartmentData(BaseModel):
     price: str = Field(description="Price including currency symbol if present, e.g. '4000 ₪'. Use empty string if not found.")
     type: str = Field(description="Type of listing: 'rent' (השכרה) or 'sale' (מכירה). Use empty string if not found.")
 
-def parse_with_llm(client: genai.Client, text: str) -> dict:
+def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) -> dict:
     prompt = f"""
     Extract apartment details from the following Facebook post.
     Return a JSON object with the requested fields. If a field is not present, use an empty string.
+    Fields to extract: address, rooms, floor, area, price, type (rent/sale).
     Post text:
     {text}
     """
-    for attempt in range(3):
+    
+    # Attempt 1: Groq
+    if groq_client:
         try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-                config=genai.types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ApartmentData,
-                ),
+            print("Attempting parsing with Groq...")
+            completion = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are an assistant that extracts apartment details into JSON. Always return valid JSON containing exactly these keys: address, rooms, floor, area, price, type. If a field is not found, use an empty string."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
             )
-            return json.loads(response.text)
-        except genai.errors.ClientError as e:
-            if e.code == 429:
-                print("Rate limit reached (429). Sleeping for 30s...")
-                time.sleep(30)
-            else:
-                print("LLM API Error:", e)
-                break
-        except json.JSONDecodeError:
-            print("Failed to parse LLM response:", response.text)
-            break
+            return json.loads(completion.choices[0].message.content)
         except Exception as e:
-            print("Unknown error during LLM parsing:", e)
-            break
-            
+            print("Groq parsing failed, falling back to Gemini...", e)
+
+    # Attempt 2 & 3: Gemini Fallbacks
+    if gemini_client:
+        models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash']
+        for model_name in models_to_try:
+            try:
+                print(f"Attempting parsing with {model_name}...")
+                response = gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=genai.types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=ApartmentData,
+                    ),
+                )
+                return json.loads(response.text)
+            except genai.errors.ClientError as e:
+                if e.code == 429:
+                    print(f"Rate limit reached for {model_name} (429).")
+                else:
+                    print(f"{model_name} API Error:", e)
+            except Exception as e:
+                print(f"Unknown error with {model_name}:", e)
+                
+    print("All LLM parsing attempts failed.")
     return {
         "address": "", "rooms": "", "floor": "", "area": "", "price": "", "type": ""
     }
@@ -110,7 +131,7 @@ def scrape_facebook_items(page, url):
         
     return items
 
-def process_and_filter(raw_items, topic, filters, api_key):
+def process_and_filter(raw_items, topic, filters, api_key, groq_api_key):
     path = os.path.join(DATA_DIR, f"{topic}.json")
     try:
         with open(path, encoding="utf-8") as f:
@@ -118,7 +139,11 @@ def process_and_filter(raw_items, topic, filters, api_key):
     except (FileNotFoundError, json.JSONDecodeError):
         saved = {}
         
-    client = genai.Client(api_key=api_key) if api_key else None
+    gemini_client = genai.Client(api_key=api_key) if api_key else None
+    try:
+        groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
+    except Exception:
+        groq_client = None
     
     processed_items = {}
     for post_id, (raw_text, url) in raw_items.items():
@@ -132,9 +157,9 @@ def process_and_filter(raw_items, topic, filters, api_key):
                 
         # Parse if not cached
         if not parsed_data:
-            if client:
+            if gemini_client or groq_client:
                 print(f"Parsing post {post_id} with LLM...")
-                parsed_data = parse_with_llm(client, raw_text)
+                parsed_data = parse_with_llm(gemini_client, groq_client, raw_text)
                 parsed_data["_raw_text"] = raw_text
             else:
                 print("No LLM API key, skipping parsing.")
@@ -194,12 +219,12 @@ def process_and_filter(raw_items, topic, filters, api_key):
             
     return processed_items
 
-def scrape(page, topic, group_url, filters, token, chat_id, api_key):
+def scrape(page, topic, group_url, filters, token, chat_id, api_key, groq_api_key):
     import html
     send_telegram(token, chat_id, f'Starting scanning {topic} on <a href="{html.escape(group_url)}">link</a>', parse_mode="HTML")
     try:
         raw_items = scrape_facebook_items(page, group_url)
-        items = process_and_filter(raw_items, topic, filters, api_key)
+        items = process_and_filter(raw_items, topic, filters, api_key, groq_api_key)
         
         new_ids, updated_ids = check_new_items(topic, items)
         
@@ -234,6 +259,7 @@ def main():
     token = os.environ.get("API_TOKEN") or config.get("telegramApiToken")
     chat_id = os.environ.get("CHAT_ID") or config.get("chatId")
     api_key = os.environ.get("GEMINI_API_KEY") or config.get("llmApiKey")
+    groq_api_key = os.environ.get("GROQ_API_KEY") or config.get("groqApiKey")
     
     projects = [p for p in config.get("facebookProjects", []) if not p.get("disabled")]
     for p in config.get("facebookProjects", []):
@@ -267,7 +293,7 @@ def main():
                 
         page = context.new_page()
         for p in projects:
-            scrape(page, p["topic"], p["url"], p.get("filters", {}), token, chat_id, api_key)
+            scrape(page, p["topic"], p["url"], p.get("filters", {}), token, chat_id, api_key, groq_api_key)
 
 if __name__ == "__main__":
     main()
