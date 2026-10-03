@@ -1,6 +1,8 @@
 {
-  "telegramApiToken": null,
-  "chatId": null,
+  "llmModels": {
+    "groq": "llama3-70b-8192",
+    "gemini": ["gemini-2.5-flash", "gemini-3.8-flash"]
+  },
   "yad2Projects": [
     {
       "enabled": true,

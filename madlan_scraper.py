@@ -87,8 +87,8 @@ def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
 
 def main():
     config = load_config()
-    token = os.environ.get("API_TOKEN") or config.get("telegramApiToken")
-    chat_id = os.environ.get("CHAT_ID") or config.get("chatId")
+    token = os.environ.get("API_TOKEN")
+    chat_id = os.environ.get("CHAT_ID")
     api_key = os.environ.get("GEMINI_API_KEY")
     groq_api_key = os.environ.get("GROQ_API_KEY")
     
