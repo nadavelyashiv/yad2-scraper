@@ -18,14 +18,23 @@ def scrape_madlan_items(page, url):
             if not page.evaluate("() => !!document.body"):
                 continue
             rows = page.evaluate(
-                r"""() => Array.from(document.querySelectorAll('div[data-auto="listed-bulletin"]'))
-                       .map(el => {
-                           const linkEl = el.querySelector('a[data-auto="listed-bulletin-clickable"]');
-                           const href = linkEl ? linkEl.getAttribute('href') : '';
-                           const text = (el.innerText || '').replace(/\n+/g, ' | ').trim();
-                           return { href, text };
-                       })
-                       .filter(r => r.text.length > 10 && r.href)"""
+                r"""() => {
+                    let links = Array.from(document.querySelectorAll('a[data-auto="listed-bulletin-clickable"]'));
+                    if (links.length === 0) {
+                        links = Array.from(document.querySelectorAll('a')).filter(a => a.href && a.href.includes('/listings/'));
+                    }
+                    return links.map(el => {
+                        const href = el.getAttribute('href') || el.href || '';
+                        let text = (el.innerText || '').replace(/\n+/g, ' | ').trim();
+                        if (text.length < 10 && el.parentElement) {
+                            text = (el.parentElement.innerText || '').replace(/\n+/g, ' | ').trim();
+                        }
+                        if (text.length < 10 && el.parentElement && el.parentElement.parentElement) {
+                            text = (el.parentElement.parentElement.innerText || '').replace(/\n+/g, ' | ').trim();
+                        }
+                        return { href, text };
+                    }).filter(r => r.text.length > 10 && r.href && r.href.includes('/listings/'));
+                }"""
             )
         except Exception:
             continue
@@ -87,14 +96,14 @@ def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
 
 def main():
     config = load_config()
-    token = os.environ.get("API_TOKEN") or config.get("telegramApiToken")
-    chat_id = os.environ.get("CHAT_ID") or config.get("chatId")
+    token = os.environ.get("API_TOKEN")
+    chat_id = os.environ.get("CHAT_ID")
     api_key = os.environ.get("GEMINI_API_KEY")
     groq_api_key = os.environ.get("GROQ_API_KEY")
     
-    projects = [p for p in config.get("madlanProjects", []) if p.get("enabled")]
+    projects = [p for p in config.get("madlanProjects", []) if not p.get("disabled")]
     for p in config.get("madlanProjects", []):
-        if not p.get("enabled"):
+        if p.get("disabled"):
             print(f'Topic "{p.get("topic")}" is disabled. Skipping.')
     if not projects:
         print("No enabled Madlan projects in config.json")
