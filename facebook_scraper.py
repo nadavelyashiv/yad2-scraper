@@ -9,71 +9,7 @@ from google import genai
 from pydantic import BaseModel, Field
 from groq import Groq
 
-from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, DATA_DIR
-
-class ApartmentData(BaseModel):
-    address: str = Field(description="Address or neighborhood of the apartment. Use empty string if not found.")
-    rooms: str = Field(description="Number of rooms, e.g. '3', '4.5'. Use empty string if not found.")
-    floor: str = Field(description="Floor number, e.g. '2', 'קרקע'. Use empty string if not found.")
-    area: str = Field(description="Area in square meters. Use empty string if not found.")
-    price: str = Field(description="Price including currency symbol if present, e.g. '4000 ₪'. Use empty string if not found.")
-    type: str = Field(description="Type of listing: 'rent' (השכרה) or 'sale' (מכירה). Use empty string if not found.")
-
-def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) -> dict:
-    prompt = f"""
-    Extract apartment details from the following Facebook post.
-    Return a JSON object with the requested fields. If a field is not present, use an empty string.
-    Fields to extract: address, rooms, floor, area, price, type (rent/sale).
-    Post text:
-    {text}
-    """
-    
-    # Attempt 1: Groq
-    if groq_client:
-        try:
-            print("Attempting parsing with Groq...")
-            completion = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are an assistant that extracts apartment details into JSON. Always return valid JSON containing exactly these keys: address, rooms, floor, area, price, type. If a field is not found, use an empty string."
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            return json.loads(completion.choices[0].message.content)
-        except Exception as e:
-            print("Groq parsing failed, falling back to Gemini...", e)
-
-    # Attempt 2 & 3: Gemini Fallbacks
-    if gemini_client:
-        models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash']
-        for model_name in models_to_try:
-            try:
-                print(f"Attempting parsing with {model_name}...")
-                response = gemini_client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=genai.types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=ApartmentData,
-                    ),
-                )
-                return json.loads(response.text)
-            except genai.errors.ClientError as e:
-                if e.code == 429:
-                    print(f"Rate limit reached for {model_name} (429).")
-                else:
-                    print(f"{model_name} API Error:", e)
-            except Exception as e:
-                print(f"Unknown error with {model_name}:", e)
-                
-    print("All LLM parsing attempts failed.")
-    return {
-        "address": "", "rooms": "", "floor": "", "area": "", "price": "", "type": ""
-    }
+from utils import load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, DATA_DIR
 
 def scrape_facebook_items(page, url):
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -131,100 +67,12 @@ def scrape_facebook_items(page, url):
         
     return items
 
-def process_and_filter(raw_items, topic, filters, api_key, groq_api_key):
-    path = os.path.join(DATA_DIR, f"{topic}.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            saved = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        saved = {}
-        
-    gemini_client = genai.Client(api_key=api_key) if api_key else None
-    try:
-        groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
-    except Exception:
-        groq_client = None
-    
-    processed_items = {}
-    for post_id, (raw_text, url) in raw_items.items():
-        parsed_data = None
-        
-        # Check cache
-        if post_id in saved:
-            old_val = saved[post_id]
-            if isinstance(old_val, dict) and old_val.get("_raw_text") == raw_text:
-                parsed_data = dict(old_val)
-                
-        # Parse if not cached
-        if not parsed_data:
-            if gemini_client or groq_client:
-                print(f"Parsing post {post_id} with LLM...")
-                parsed_data = parse_with_llm(gemini_client, groq_client, raw_text)
-                parsed_data["_raw_text"] = raw_text
-            else:
-                print("No LLM API key, skipping parsing.")
-                continue
-                
-        # Apply filters
-        passes = True
-        
-        if filters.get("type") and parsed_data.get("type"):
-            if filters["type"] not in parsed_data["type"].lower() and parsed_data["type"].lower() not in filters["type"]:
-                passes = False
-                
-        if passes and filters.get("minRooms") and parsed_data.get("rooms"):
-            try:
-                rooms_val = float(re.search(r"[\d\.]+", parsed_data["rooms"]).group())
-                if rooms_val < filters["minRooms"]:
-                    passes = False
-            except Exception:
-                pass
-                
-        if passes and filters.get("maxRooms") and parsed_data.get("rooms"):
-            try:
-                rooms_val = float(re.search(r"[\d\.]+", parsed_data["rooms"]).group())
-                if rooms_val > filters["maxRooms"]:
-                    passes = False
-            except Exception:
-                pass
-
-        if passes and filters.get("maxPrice") and parsed_data.get("price"):
-            try:
-                price_val = float(re.search(r"[\d]+", parsed_data["price"].replace(',', '')).group())
-                if price_val > filters["maxPrice"]:
-                    passes = False
-            except Exception:
-                pass
-                
-        if passes and filters.get("minPrice") and parsed_data.get("price"):
-            try:
-                price_val = float(re.search(r"[\d]+", parsed_data["price"].replace(',', '')).group())
-                if price_val < filters["minPrice"]:
-                    passes = False
-            except Exception:
-                pass
-                
-        if passes and filters.get("keywords") and isinstance(filters["keywords"], list):
-            found_keyword = False
-            text_to_search = raw_text + " " + parsed_data.get("address", "")
-            for kw in filters["keywords"]:
-                if kw in text_to_search:
-                    found_keyword = True
-                    break
-            if not found_keyword:
-                passes = False
-                
-        if passes:
-            processed_items[post_id] = (parsed_data, url)
-            
-    return processed_items
-
 def scrape(page, topic, group_url, filters, token, chat_id, api_key, groq_api_key):
     import html
     start_msg = f'Starting scanning {topic} on <a href="{html.escape(group_url)}">link</a>'
     try:
         raw_items = scrape_facebook_items(page, group_url)
-        items = process_and_filter(raw_items, topic, filters, api_key, groq_api_key)
+        items = process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key)
         
         new_ids, updated_ids = check_new_items(topic, items)
         
