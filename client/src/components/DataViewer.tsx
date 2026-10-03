@@ -2,12 +2,26 @@ import { useState, useEffect } from 'react';
 import { fetchGitTree, fetchFileContent } from '../lib/github';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-
+import { Button } from '@/components/ui/button';
+import { ExternalLink } from 'lucide-react';
 
 interface FileData {
   name: string;
   items: [string, any][];
 }
+
+function getSourceUrl(fileName: string, id: string) {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.includes('yad2')) {
+    return `https://www.yad2.co.il/item/${id}`;
+  }
+  if (lowerName.includes('madlan')) {
+    return `https://www.madlan.co.il/listings/${id}`;
+  }
+  // Fallback for Facebook or others
+  return `https://www.facebook.com/${id}`;
+}
+
 
 export default function DataViewer({ token }: { token: string }) {
   const [data, setData] = useState<FileData[]>([]);
@@ -63,11 +77,14 @@ export default function DataViewer({ token }: { token: string }) {
                       <TableHead>Floor</TableHead>
                       <TableHead>Area</TableHead>
                       <TableHead>Price</TableHead>
+                      <TableHead className="text-right">Source</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {fileData.items.map(([id, apt]) => {
                       const isDict = typeof apt === 'object' && apt !== null;
+                      const href = getSourceUrl(fileData.name, id);
+                      
                       return (
                         <TableRow key={id}>
                           <TableCell className="font-medium">{isDict ? (apt.address || '-') : apt}</TableCell>
@@ -75,6 +92,14 @@ export default function DataViewer({ token }: { token: string }) {
                           <TableCell>{isDict ? (apt.floor || '-') : '-'}</TableCell>
                           <TableCell>{isDict && apt.area ? `${apt.area} m²` : '-'}</TableCell>
                           <TableCell>{isDict ? (apt.price || '-') : '-'}</TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" asChild>
+                              <a href={href} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Source
+                              </a>
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
