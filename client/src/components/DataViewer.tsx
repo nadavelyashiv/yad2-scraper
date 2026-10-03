@@ -32,8 +32,28 @@ export default function DataViewer({ token }: { token: string }) {
     async function loadData() {
       try {
         setLoading(true);
-        const treeData = await fetchGitTree(token);
-        const jsonFiles = treeData.tree.filter((f: any) => f.path.startsWith('data/') && f.path.endsWith('.json'));
+        const [treeData, configRes] = await Promise.all([
+          fetchGitTree(token),
+          fetchFileContent('config.json', token)
+        ]);
+
+        const config = JSON.parse(configRes.content);
+        const disabledTopics = new Set<string>();
+        ['yad2Projects', 'madlanProjects', 'facebookProjects'].forEach((key) => {
+          if (config[key]) {
+            config[key].forEach((project: any) => {
+              if (project.enabled === false) {
+                disabledTopics.add(project.topic);
+              }
+            });
+          }
+        });
+
+        const jsonFiles = treeData.tree.filter((f: any) => {
+          if (!f.path.startsWith('data/') || !f.path.endsWith('.json')) return false;
+          const topicName = f.path.replace('data/', '').replace('.json', '');
+          return !disabledTopics.has(topicName);
+        });
         
         const loadedData = [];
         for (const file of jsonFiles) {
