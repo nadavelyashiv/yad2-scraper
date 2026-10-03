@@ -143,6 +143,11 @@ class ApartmentData(BaseModel):
     type: str = Field(description="Type of listing: 'rent' (השכרה) or 'sale' (מכירה). Use empty string if not found.")
 
 def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) -> dict:
+    config = load_config()
+    llm_models = config.get("llmModels", {})
+    groq_model = llm_models.get("groq", "llama3-70b-8192")
+    gemini_models = llm_models.get("gemini", ["gemini-2.5-flash", "gemini-3.8-flash"])
+
     prompt = f"""
     Extract apartment details from the following post/listing.
     Return a JSON object with the requested fields. If a field is not present, use an empty string.
@@ -153,7 +158,7 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
     
     if groq_client:
         try:
-            print("Attempting parsing with Groq...")
+            print(f"Attempting parsing with Groq ({groq_model})...")
             completion = groq_client.chat.completions.create(
                 model="llama-3.1-70b-versatile",
                 messages=[
