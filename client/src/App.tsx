@@ -9,6 +9,7 @@ import { Play } from 'lucide-react';
 import DataViewer from './components/DataViewer';
 import ConfigEditor from './components/ConfigEditor';
 import { triggerScraperWorkflow } from './lib/github';
+import LogsViewer from './components/LogsViewer';
 
 function App() {
   const { toast } = useToast();
@@ -54,6 +55,7 @@ function App() {
           <TabsList className="mb-4">
             <TabsTrigger value="data">Data Viewer</TabsTrigger>
             <TabsTrigger value="config">Configuration</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
           
@@ -63,6 +65,10 @@ function App() {
           
           <TabsContent value="config">
             <ConfigEditor token={token} />
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <LogsViewer token={token} />
           </TabsContent>
 
           <TabsContent value="settings">
