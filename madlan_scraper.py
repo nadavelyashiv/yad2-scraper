@@ -92,9 +92,9 @@ def main():
     api_key = os.environ.get("GEMINI_API_KEY")
     groq_api_key = os.environ.get("GROQ_API_KEY")
     
-    projects = [p for p in config.get("madlanProjects", []) if not p.get("disabled")]
+    projects = [p for p in config.get("madlanProjects", []) if p.get("enabled")]
     for p in config.get("madlanProjects", []):
-        if p.get("disabled"):
+        if not p.get("enabled"):
             print(f'Topic "{p.get("topic")}" is disabled. Skipping.')
     if not projects:
         print("No enabled Madlan projects in config.json")
