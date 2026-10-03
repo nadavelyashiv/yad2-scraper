@@ -21,6 +21,7 @@ This skill automates the process of wrapping up a task into a PR. Execute these 
     *   Create new branch: `git checkout -b ISSUE-<ID>/<short-desc>` (e.g., `ISSUE-123/fix-json-files`)
     *   Apply changes: `git stash pop`. (If conflicts occur, stop and alert the user).
 4.  **Commit**:
+    *   Delete redundant files: Remove any generated or temporary files that should not be committed.
     *   Stage changes: `git add -A`
     *   Generate a commit message using the Conventional Commits standard (e.g., `feat: ...`, `fix: ...`).
     *   **CRITICAL RULE EXCEPTION**: You are normally forbidden from committing automatically. However, when the user invokes this skill, they are granting explicit permission. Run `git commit -m "<message>"`.

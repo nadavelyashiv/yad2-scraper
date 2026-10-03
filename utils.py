@@ -27,6 +27,12 @@ def format_apartment_change_message(val, changes, url):
     return f"[{change_str}]\n{val}\n{url}"
 
 def load_config():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     with open(CONFIG_PATH, encoding="utf-8") as f:
         return json.load(f)
 
