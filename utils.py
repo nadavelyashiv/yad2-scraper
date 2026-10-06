@@ -278,6 +278,12 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
                 is_empty = not any(old_val.get(k) for k in ["address", "rooms", "floor", "price", "type", "area"])
                 if not is_empty:
                     parsed_data = dict(old_val)
+                    if parsed_data.get("price") and isinstance(parsed_data["price"], str):
+                        import re
+                        try:
+                            parsed_data["price"] = int(re.sub(r'[^\d]', '', parsed_data["price"]))
+                        except ValueError:
+                            parsed_data["price"] = None
                 
         if not parsed_data:
             if gemini_client or groq_client:
