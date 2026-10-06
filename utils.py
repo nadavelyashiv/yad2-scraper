@@ -29,7 +29,12 @@ def generate_raw_string(val: dict) -> str:
     if val.get('rooms'): parts.append(f"{val['rooms']} חד׳")
     if val.get('floor'): parts.append(f"קומה {val['floor']}")
     if val.get('area'): parts.append(f"{val['area']} מ״ר")
-    if val.get('price'): parts.append(val['price'])
+    if val.get('price'):
+        price = val['price']
+        if isinstance(price, int):
+            parts.append(f"{price:,} ₪")
+        else:
+            parts.append(str(price))
     return " | ".join(parts)
 
 def format_apartment_message(val, url):
@@ -112,9 +117,17 @@ def check_new_items(topic, items, parser=None):
                 if isinstance(old_val, dict):
                     changes = []
                     for k in new_val:
-                        if k == "price" and old_val.get(k) != new_val[k]:
-                            if old_val.get(k) != "":
-                                changes.append(f"{k}: {old_val.get(k)} -> {new_val[k]}")
+                        if k == "price":
+                            old_p = old_val.get(k)
+                            new_p = new_val[k]
+                            if isinstance(old_p, str) and old_p != "":
+                                import re
+                                try:
+                                    old_p = int(re.sub(r'[^\d]', '', old_p))
+                                except ValueError:
+                                    pass
+                            if old_p != new_p and old_p not in ("", None):
+                                changes.append(f"{k}: {old_val.get(k)} -> {new_p}")
                     if changes:
                         updated_ids.append((i, changes))
                 else:
@@ -122,9 +135,17 @@ def check_new_items(topic, items, parser=None):
                         old_dict = parser(old_val)
                         changes = []
                         for k in new_val:
-                            if k == "price" and old_dict.get(k) != new_val[k]:
-                                if old_dict.get(k) != "":
-                                    changes.append(f"{k}: {old_dict.get(k)} -> {new_val[k]}")
+                            if k == "price":
+                                old_p = old_dict.get(k)
+                                new_p = new_val[k]
+                                if isinstance(old_p, str) and old_p != "":
+                                    import re
+                                    try:
+                                        old_p = int(re.sub(r'[^\d]', '', old_p))
+                                    except ValueError:
+                                        pass
+                                if old_p != new_p and old_p not in ("", None):
+                                    changes.append(f"{k}: {old_dict.get(k)} -> {new_p}")
                         if changes:
                             updated_ids.append((i, changes))
                     else:
@@ -156,7 +177,7 @@ class ApartmentData(BaseModel):
     rooms: str = Field(description="Number of rooms, e.g. '3', '4.5'. Use empty string if not found.")
     floor: str = Field(description="Floor number, e.g. '2', 'קרקע'. Use empty string if not found.")
     area: str = Field(description="Area in square meters. Use empty string if not found.")
-    price: str = Field(description="Price including currency symbol if present, e.g. '4000 ₪'. Use empty string if not found.")
+    price: int | None = Field(description="Price as a number. Extract only the digits, e.g. 4000. Use null if not found.", default=None)
     type: str = Field(description="Type of listing: 'rent' (השכרה) or 'sale' (מכירה). Use empty string if not found.")
 
 def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) -> dict:
@@ -173,6 +194,7 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
     {text}
     """
     
+    parsed_data = None
     if groq_client:
         try:
             logger.info(f"Attempting parsing with Groq ({groq_model})...")
@@ -187,11 +209,11 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
                 ],
                 response_format={"type": "json_object"}
             )
-            return json.loads(completion.choices[0].message.content)
+            parsed_data = json.loads(completion.choices[0].message.content)
         except Exception as e:
             logger.warning(f"Groq parsing failed, falling back to Gemini... {e}")
 
-    if gemini_client:
+    if not parsed_data and gemini_client:
         models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.8-flash']
         for model_name in models_to_try:
             try:
@@ -204,7 +226,8 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
                         response_schema=ApartmentData,
                     ),
                 )
-                return json.loads(response.text)
+                parsed_data = json.loads(response.text)
+                break
             except genai.errors.ClientError as e:
                 if e.code == 429:
                     logger.warning(f"Rate limit reached for {model_name} (429).")
@@ -213,10 +236,23 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
             except Exception as e:
                 logger.error(f"Unknown error with {model_name}: {e}")
                 
-    logger.error("All LLM parsing attempts failed.")
-    return {
-        "address": "", "rooms": "", "floor": "", "area": "", "price": "", "type": ""
-    }
+    if not parsed_data:
+        logger.error("All LLM parsing attempts failed.")
+        parsed_data = {
+            "address": "", "rooms": "", "floor": "", "area": "", "price": None, "type": ""
+        }
+        
+    if parsed_data.get("price"):
+        import re
+        try:
+            price_val = int(re.sub(r'[^\d]', '', str(parsed_data["price"])))
+            parsed_data["price"] = price_val
+        except ValueError:
+            parsed_data["price"] = None
+    else:
+        parsed_data["price"] = None
+        
+    return parsed_data
 
 def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
     path = os.path.join(DATA_DIR, f"{topic}.json")
@@ -261,7 +297,7 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
             if filters.get("max_price") and parsed_data.get("price"):
                 import re
                 try:
-                    price_val = int(re.sub(r'[^\d]', '', parsed_data["price"]))
+                    price_val = int(re.sub(r'[^\d]', '', str(parsed_data["price"])))
                     if price_val > filters["max_price"]:
                         passes = False
                 except ValueError:
