@@ -199,7 +199,7 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
         try:
             logger.info(f"Attempting parsing with Groq ({groq_model})...")
             completion = groq_client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
+                model=groq_model,
                 messages=[
                     {
                         "role": "system", 
@@ -214,7 +214,7 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
             logger.warning(f"Groq parsing failed, falling back to Gemini... {e}")
 
     if not parsed_data and gemini_client:
-        models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.8-flash']
+        models_to_try = gemini_models if isinstance(gemini_models, list) else [gemini_models]
         for model_name in models_to_try:
             try:
                 logger.info(f"Attempting parsing with {model_name}...")
