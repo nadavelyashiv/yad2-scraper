@@ -195,29 +195,11 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
     """
     
     parsed_data = None
-    if groq_client:
-        try:
-            logger.info(f"Attempting parsing with Groq ({groq_model})...")
-            completion = groq_client.chat.completions.create(
-                model=groq_model,
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are an assistant that extracts apartment details into JSON. Always return valid JSON containing exactly these keys: address, rooms, floor, area, price, type. If a field is not found, use an empty string."
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            parsed_data = json.loads(completion.choices[0].message.content)
-        except Exception as e:
-            logger.warning(f"Groq parsing failed, falling back to Gemini... {e}")
-
-    if not parsed_data and gemini_client:
+    if gemini_client:
         models_to_try = gemini_models if isinstance(gemini_models, list) else [gemini_models]
         for model_name in models_to_try:
             try:
-                logger.info(f"Attempting parsing with {model_name}...")
+                logger.info(f"[LLM] Attempting Gemini model: {model_name} | Prompt length: {len(prompt)} chars | Config: JSON schema enforced")
                 response = gemini_client.models.generate_content(
                     model=model_name,
                     contents=prompt,
@@ -226,16 +208,36 @@ def parse_with_llm(gemini_client: genai.Client, groq_client: Groq, text: str) ->
                         response_schema=ApartmentData,
                     ),
                 )
+                logger.debug(f"[{model_name}] Raw response: {response.text.strip()}")
                 parsed_data = json.loads(response.text)
+                logger.info(f"[LLM] Successfully parsed using {model_name}")
                 break
             except genai.errors.ClientError as e:
                 if e.code == 429:
-                    logger.warning(f"Rate limit reached for {model_name} (429).")
+                    logger.warning(f"[LLM] Rate limit reached for {model_name} (429).")
                 else:
-                    logger.error(f"{model_name} API Error: {e}")
+                    logger.error(f"[LLM] {model_name} API Error: {e}")
             except Exception as e:
-                logger.error(f"Unknown error with {model_name}: {e}")
-                
+                logger.error(f"[LLM] Unknown error with {model_name}: {e}")
+
+    if not parsed_data and groq_client:
+        try:
+            sys_prompt = "You are an assistant that extracts apartment details into JSON. Always return valid JSON containing exactly these keys: address, rooms, floor, area, price, type. If a field is not found, use an empty string."
+            logger.info(f"[LLM] Attempting Groq fallback model: {groq_model} | System prompt length: {len(sys_prompt)} chars | User prompt length: {len(prompt)} chars | Config: JSON object mode")
+            completion = groq_client.chat.completions.create(
+                model=groq_model,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            raw_content = completion.choices[0].message.content.strip()
+            logger.debug(f"[{groq_model}] Raw response: {raw_content}")
+            parsed_data = json.loads(raw_content)
+            logger.info(f"[LLM] Successfully parsed using Groq ({groq_model})")
+        except Exception as e:
+            logger.warning(f"[LLM] Groq parsing failed: {e}")
     if not parsed_data:
         logger.error("All LLM parsing attempts failed.")
         parsed_data = {
