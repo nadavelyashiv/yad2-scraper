@@ -12,7 +12,12 @@ from utils import logger, load_config, send_telegram, check_new_items, format_ap
 def scrape_madlan_items(page, url):
     """Return {item_id: text} for the listings on the page."""
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    time.sleep(4)
+    try:
+        page.wait_for_selector("a[href*='/listings/']", timeout=20000)
+    except:
+        # Fallback wait if it didn't find the selector, might just be empty results or still loading
+        time.sleep(5)
+    
     html_content = page.content()
     soup = BeautifulSoup(html_content, "html.parser")
     links = soup.find_all("a", attrs={"data-auto": "listed-bulletin-clickable"})
