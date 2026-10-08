@@ -38,7 +38,7 @@ export default function LogsViewer({ token }: { token: string }) {
       const filteredLogs = [];
       
       for (const line of lines) {
-        if (line.includes('##[group]Run Run scrapers')) {
+        if (line.includes('##[group]Run Run scrapers') || line.includes('##[group]Run export API_TOKEN=')) {
           isInPhase = true;
           continue;
         }
