@@ -101,7 +101,7 @@ def main():
         logger.info("No enabled Madlan projects in config.json")
         return
     
-    with Camoufox(headless=True, window=(1400, 1000)) as browser:
+    with Camoufox(headless=True, humanize=True, window=(1400, 1000)) as browser:
         page = browser.new_page()
         for p in projects:
             scrape(page, p["topic"], p["url"], token, chat_id, api_key, groq_api_key)
