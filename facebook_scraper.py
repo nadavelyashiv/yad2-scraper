@@ -9,7 +9,58 @@ from google import genai
 from pydantic import BaseModel, Field
 from groq import Groq
 
-from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, DATA_DIR
+from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, DATA_DIR, sort_ids_by_date
+from datetime import datetime, timedelta
+
+def parse_fb_date(date_str):
+    if not date_str:
+        return ""
+    now = datetime.now()
+    date_str = date_str.lower().strip()
+    
+    if 'just now' in date_str or 'now' == date_str or 'now' in date_str.split():
+        return now.isoformat()
+        
+    m = re.search(r'(\d+)\s*(m|min|mins|minute|minutes)', date_str)
+    if m:
+        return (now - timedelta(minutes=int(m.group(1)))).isoformat()
+        
+    m = re.search(r'(\d+)\s*(h|hr|hrs|hour|hours)', date_str)
+    if m:
+        return (now - timedelta(hours=int(m.group(1)))).isoformat()
+        
+    m = re.search(r'(\d+)\s*(d|day|days)', date_str)
+    if m:
+        return (now - timedelta(days=int(m.group(1)))).isoformat()
+        
+    m = re.search(r'(\d+)\s*(w|week|weeks)', date_str)
+    if m:
+        return (now - timedelta(weeks=int(m.group(1)))).isoformat()
+        
+    m = re.search(r'(\d+)\s*(y|year|years)', date_str)
+    if m:
+        return (now - timedelta(days=int(m.group(1))*365)).isoformat()
+        
+    try:
+        d_str = re.sub(r'\s+at\s+', ' ', date_str)
+        d = datetime.strptime(d_str, "%B %d %I:%M %p")
+        d = d.replace(year=now.year)
+        if d > now:
+            d = d.replace(year=now.year - 1)
+        return d.isoformat()
+    except ValueError:
+        pass
+        
+    try:
+        d = datetime.strptime(date_str, "%B %d")
+        d = d.replace(year=now.year)
+        if d > now:
+            d = d.replace(year=now.year - 1)
+        return d.isoformat()
+    except ValueError:
+        pass
+        
+    return ""
 
 def scrape_facebook_items(page, url):
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -35,10 +86,11 @@ def scrape_facebook_items(page, url):
                 return posts.map(el => {
                     const links = Array.from(el.querySelectorAll('a[href*="/groups/"][href*="/permalink/"], a[href*="/groups/"][href*="/posts/"]'));
                     const href = links.length > 0 ? links[0].getAttribute('href') : '';
+                    const dateText = links.length > 0 ? links[0].innerText : '';
                     
                     const textNodes = Array.from(el.querySelectorAll('div[dir="auto"]'));
                     const text = textNodes.map(n => n.innerText).join('\n').trim();
-                    return { href, text };
+                    return { href, text, dateText };
                 }).filter(r => r.text.length > 20 && r.href);
             }"""
         )
@@ -54,7 +106,14 @@ def scrape_facebook_items(page, url):
             post_id = m.group(1)
             full_href = r["href"] if r["href"].startswith("http") else f"https://www.facebook.com{r['href'] if r['href'].startswith('/') else '/' + r['href']}"
             full_href = full_href.split('?')[0]  # Clean query params
-            items[post_id] = (r["text"], full_href)
+            
+            dates = {}
+            if r.get("dateText"):
+                parsed = parse_fb_date(r["dateText"])
+                if parsed:
+                    dates["published_at"] = parsed
+                    
+            items[post_id] = (r["text"], full_href, dates)
             
     if not items:
         try:
@@ -75,6 +134,9 @@ def scrape(page, topic, group_url, filters, token, chat_id, api_key, groq_api_ke
         items = process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key)
         
         new_ids, updated_ids = check_new_items(topic, items)
+        
+        new_ids = sort_ids_by_date(new_ids, items)
+        updated_ids = sort_ids_by_date(updated_ids, items)
         
         results = []
         if new_ids:
@@ -123,6 +185,11 @@ def main():
         
     c_user = os.environ.get("FB_C_USER")
     xs = os.environ.get("FB_XS")
+    
+    import urllib.parse
+    if xs:
+        xs = urllib.parse.unquote(xs)
+        
     cookies = config.get("facebookCookies", [])
     if c_user and xs:
         cookies.extend([
