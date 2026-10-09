@@ -45,7 +45,8 @@ def scrape_madlan_items(page, url):
     if items:
         return items
     
-    raise RuntimeError("Could not extract Madlan listings (markup change or challenge)")
+    logger.error("Could not extract Madlan listings (markup change or challenge). Returning empty results.")
+    return {}
 
 
 def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):

@@ -58,7 +58,8 @@ def scrape_items(page, url):
                     items.setdefault(m.group(1), (r["text"], full_href))
             if items:
                 return items
-    raise RuntimeError("Could not extract listings (Radware challenge or markup change)")
+    logger.error("Could not extract listings (Radware challenge or markup change). Returning empty results.")
+    return {}
 
 
 def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
