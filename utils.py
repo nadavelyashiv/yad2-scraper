@@ -4,6 +4,7 @@ import urllib.parse
 import urllib.request
 import logging
 import sys
+import time
 
 logger = logging.getLogger("scraper")
 logger.setLevel(logging.DEBUG)
@@ -327,6 +328,7 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
         if not parsed_data:
             if gemini_client or groq_client:
                 logger.info(f"Parsing item {item_id} with LLM...\nRaw text:\n{raw_text}")
+                time.sleep(2.5)
                 parsed_data = parse_with_llm(gemini_client, groq_client, raw_text)
                 parsed_data["_raw_text"] = raw_text
             else:
