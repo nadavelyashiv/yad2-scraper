@@ -99,20 +99,4 @@ export async function fetchLatestWorkflowRun(token: string) {
   return data.workflow_runs[0];
 }
 
-export async function fetchWorkflowJobs(runId: number, token: string) {
-  const headers = { Authorization: `token ${token}` };
-  const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/runs/${runId}/jobs`, { headers });
-  if (!res.ok) throw new Error('Failed to fetch jobs');
-  const data = await res.json();
-  return data.jobs;
-}
 
-export async function fetchJobLogs(jobId: number, token: string) {
-  const headers = { 
-    Authorization: `token ${token}`,
-    Accept: 'application/vnd.github.v3+json'
-  };
-  const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/jobs/${jobId}/logs`, { headers });
-  if (!res.ok) throw new Error('Failed to fetch logs');
-  return res.text();
-}
