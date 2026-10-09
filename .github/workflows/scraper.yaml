@@ -30,20 +30,32 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "${{ secrets.GIT_CONFIG_EMAIL }}"
 
-      - name: Run scrapers
+      - name: Set Environment Variables
         run: |
-          export API_TOKEN=${{ secrets.API_TOKEN }}
-          export CHAT_ID=${{ secrets.CHAT_ID }}
-          export FB_C_USER=${{ secrets.FB_C_USER }}
-          export FB_XS=${{ secrets.FB_XS }}
-          export GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          export GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
-          python clean_caches.py
-          python yad2_scraper.py
-          python madlan_scraper.py
-          python facebook_scraper.py
+          echo "API_TOKEN=${{ secrets.API_TOKEN }}" >> $GITHUB_ENV
+          echo "CHAT_ID=${{ secrets.CHAT_ID }}" >> $GITHUB_ENV
+          echo "FB_C_USER=${{ secrets.FB_C_USER }}" >> $GITHUB_ENV
+          echo "FB_XS=${{ secrets.FB_XS }}" >> $GITHUB_ENV
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
+          echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> $GITHUB_ENV
+
+      - name: Clean caches
+        run: python clean_caches.py
+
+      - name: Run Yad2
+        if: always()
+        run: python yad2_scraper.py
+
+      - name: Run Madlan
+        if: always()
+        run: python madlan_scraper.py
+
+      - name: Run Facebook
+        if: always()
+        run: python facebook_scraper.py
 
       - name: Push new json data if needed
+        if: always()
         run: |
           if [ -f ./push_me ]; then
             echo Pushing to Github...
