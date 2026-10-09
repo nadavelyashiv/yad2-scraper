@@ -66,6 +66,13 @@ def scrape_madlan_items(page, url):
     if items:
         return items
     
+    try:
+        page.screenshot(path="madlan_error.png")
+        with open("madlan_error.html", "w", encoding="utf-8") as f:
+            f.write(page.content())
+    except Exception:
+        pass
+
     logger.error("Could not extract Madlan listings (markup change or challenge).")
     raise RuntimeError("Could not extract Madlan listings (markup change or challenge).")
 
