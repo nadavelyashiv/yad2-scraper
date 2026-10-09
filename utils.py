@@ -23,6 +23,15 @@ logger.addHandler(ch)
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
+def sort_ids_by_date(ids, items):
+    def get_date_key(item):
+        i = item[0] if isinstance(item, tuple) else item
+        data = items[i][0]
+        if isinstance(data, dict):
+            return data.get("updated_at") or data.get("published_at") or ""
+        return ""
+    return sorted(ids, key=get_date_key, reverse=True)
+
 def generate_raw_string(val: dict) -> str:
     parts = []
     if val.get('address'): parts.append(val['address'])
@@ -35,6 +44,21 @@ def generate_raw_string(val: dict) -> str:
             parts.append(f"{price:,} ₪")
         else:
             parts.append(str(price))
+    
+    def format_iso(iso_str):
+        try:
+            from datetime import datetime
+            d = datetime.fromisoformat(iso_str.replace("Z", "+00:00").split(".")[0])
+            return d.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            return str(iso_str)
+
+    date_parts = []
+    if val.get('published_at'): date_parts.append(f"פורסם: {format_iso(val['published_at'])}")
+    if val.get('updated_at'): date_parts.append(f"עודכן: {format_iso(val['updated_at'])}")
+    if date_parts:
+        parts.append(" | ".join(date_parts))
+        
     return " | ".join(parts)
 
 def format_apartment_message(val, url):
@@ -158,7 +182,14 @@ def check_new_items(topic, items, parser=None):
                 updated_ids.append(i)
 
     # State pruning: keep only currently visible items, save their latest text
-    updated_state = {i: items[i][0] for i in current}
+    # Preserve original insertion order to minimize git diffs when ads are bumped
+    updated_state = {}
+    for i in saved:
+        if i in current:
+            updated_state[i] = items[i][0]
+    for i in current:
+        if i not in updated_state:
+            updated_state[i] = items[i][0]
 
     if new_ids or updated_ids or updated_state != saved:
         with open(path, "w", encoding="utf-8") as f:
@@ -271,7 +302,13 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
         groq_client = None
     
     processed_items = {}
-    for item_id, (raw_text, url) in raw_items.items():
+    for item_id, raw_val in raw_items.items():
+        if isinstance(raw_val, tuple):
+            raw_text, url = raw_val[0], raw_val[1]
+            dates = raw_val[2] if len(raw_val) > 2 else {}
+        else:
+            raw_text, url, dates = raw_val["text"], raw_val["url"], raw_val.get("dates", {})
+            
         parsed_data = None
         
         if item_id in saved:
@@ -296,20 +333,48 @@ def process_items_with_llm(raw_items, topic, filters, api_key, groq_api_key):
                 logger.warning("No LLM API key, skipping parsing.")
                 continue
                 
+        if dates.get("published_at"):
+            parsed_data["published_at"] = dates["published_at"]
+        if dates.get("updated_at"):
+            parsed_data["updated_at"] = dates["updated_at"]
+                
         passes = True
         if filters:
             if filters.get("type") and parsed_data.get("type"):
                 if filters["type"] not in parsed_data["type"].lower() and parsed_data["type"].lower() not in filters["type"]:
                     passes = False
                     
-            if filters.get("max_price") and parsed_data.get("price"):
+            max_p = filters.get("maxPrice") or filters.get("max_price")
+            if max_p is not None and parsed_data.get("price"):
                 import re
                 try:
                     price_val = int(re.sub(r'[^\d]', '', str(parsed_data["price"])))
-                    if price_val > filters["max_price"]:
+                    if price_val > max_p:
                         passes = False
                 except ValueError:
                     pass
+                    
+            min_r = filters.get("minRooms") or filters.get("min_rooms")
+            if min_r is not None and parsed_data.get("rooms"):
+                import re
+                try:
+                    rooms_val = float(re.sub(r'[^\d\.]', '', str(parsed_data["rooms"])))
+                    if rooms_val < min_r:
+                        passes = False
+                except ValueError:
+                    pass
+                    
+            keywords = filters.get("keywords", [])
+            if keywords and passes:
+                raw_text_lower = raw_text.lower()
+                parsed_addr = (parsed_data.get("address") or "").lower()
+                has_keyword = False
+                for kw in keywords:
+                    if kw.lower() in raw_text_lower or kw.lower() in parsed_addr:
+                        has_keyword = True
+                        break
+                if not has_keyword:
+                    passes = False
         
         if passes:
             processed_items[item_id] = (parsed_data, url)

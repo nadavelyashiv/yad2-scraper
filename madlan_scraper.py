@@ -7,10 +7,19 @@ import time
 from camoufox.sync_api import Camoufox
 from bs4 import BeautifulSoup
 
-from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
+from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, sort_ids_by_date
+from datetime import datetime
+
+def parse_madlan_date(d_str):
+    try:
+        d_str_clean = d_str.replace(" GMT ", " ")
+        d = datetime.strptime(d_str_clean, "%a %b %d %H:%M:%S %Y")
+        return d.isoformat()
+    except Exception:
+        return d_str
 
 def scrape_madlan_items(page, url):
-    """Return {item_id: text} for the listings on the page."""
+    """Return {item_id: (text, url, dates)} for the listings on the page."""
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
     try:
         page.wait_for_selector("a[href*='/listings/']", timeout=20000)
@@ -19,6 +28,17 @@ def scrape_madlan_items(page, url):
         time.sleep(5)
     
     html_content = page.content()
+    
+    dates_map = {}
+    for item_id in set(re.findall(r'/listings/([a-zA-Z0-9_-]+)', html_content)):
+        idx = html_content.find(f'"{item_id}"')
+        if idx == -1: idx = html_content.find(item_id)
+        if idx != -1:
+            snippet = html_content[idx:idx+3000]
+            m = re.search(r'lastUpdated":"([^"]+)"', snippet)
+            if m:
+                dates_map[item_id] = {'updated_at': parse_madlan_date(m.group(1))}
+
     soup = BeautifulSoup(html_content, "html.parser")
     links = soup.find_all("a", attrs={"data-auto": "listed-bulletin-clickable"})
     if not links:
@@ -39,8 +59,9 @@ def scrape_madlan_items(page, url):
         if len(text) > 10 and "/listings/" in href:
             m = re.search(r"/listings/([a-zA-Z0-9_-]+)", href)
             if m:
+                item_id = m.group(1)
                 full_href = href if href.startswith("http") else f"https://www.madlan.co.il{href if href.startswith('/') else '/' + href}"
-                items.setdefault(m.group(1), (text, full_href))
+                items.setdefault(item_id, (text, full_href, dates_map.get(item_id, {})))
                 
     if items:
         return items
@@ -56,6 +77,9 @@ def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
         raw_items = scrape_madlan_items(page, url)
         items = process_items_with_llm(raw_items, topic, None, api_key, groq_api_key)
         new_ids, updated_ids = check_new_items(topic, items)
+        
+        new_ids = sort_ids_by_date(new_ids, items)
+        updated_ids = sort_ids_by_date(updated_ids, items)
         
         results = []
         if new_ids:

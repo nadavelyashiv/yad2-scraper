@@ -20,14 +20,14 @@ import urllib.parse
 import urllib.request
 
 from camoufox.sync_api import Camoufox
-from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm
+from utils import logger, load_config, send_telegram, check_new_items, format_apartment_message, format_apartment_change_message, process_items_with_llm, sort_ids_by_date
 
 ITEM_ID_RE = re.compile(r"/item/(?:[^/?]+/)*([a-z0-9]+)(?:\?|$)", re.I)
 
 
 
 def scrape_items(page, url):
-    """Return {item_id: text} for the listings on the page."""
+    """Return {item_id: (text, url, dates)} for the listings on the page."""
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
     for _ in range(15):
         time.sleep(2)
@@ -37,6 +37,41 @@ def scrape_items(page, url):
             title = page.title()
             if title == "Radware Page":
                 continue  # challenge not cleared yet
+            
+            # Extract JSON state to get dates
+            feed_data_json = page.evaluate(
+                r"""() => {
+                    let script = document.getElementById('__NEXT_DATA__');
+                    return script ? script.innerText : null;
+                }"""
+            )
+            dates_map = {}
+            if feed_data_json:
+                try:
+                    data = json.loads(feed_data_json)
+                    def find_feed_items(d):
+                        if isinstance(d, dict):
+                            if "feed_items" in d and isinstance(d["feed_items"], list):
+                                return d["feed_items"]
+                            for v in d.values():
+                                res = find_feed_items(v)
+                                if res: return res
+                        elif isinstance(d, list):
+                            for item in d:
+                                res = find_feed_items(item)
+                                if res: return res
+                        return []
+                        
+                    items_list = find_feed_items(data)
+                    for item in items_list:
+                        if isinstance(item, dict) and "id" in item:
+                            dates_map[str(item["id"])] = {
+                                "published_at": item.get("createdAt"),
+                                "updated_at": item.get("updatedAt")
+                            }
+                except Exception as e:
+                    logger.error(f"Failed to parse yad2 NEXT_DATA: {e}")
+
             rows = page.evaluate(
                 r"""() => Array.from(document.querySelectorAll('div[class*="feedItemBox"] a[href*="/item/"]'))
                        .map(el => ({
@@ -53,9 +88,10 @@ def scrape_items(page, url):
             for r in rows:
                 m = ITEM_ID_RE.search(r["href"])
                 if m:
+                    item_id = m.group(1)
                     href = r["href"]
                     full_href = href if href.startswith("http") else f"https://www.yad2.co.il{href if href.startswith('/') else '/' + href}"
-                    items.setdefault(m.group(1), (r["text"], full_href))
+                    items.setdefault(item_id, (r["text"], full_href, dates_map.get(item_id, {})))
             if items:
                 return items
     logger.error("Could not extract listings (Radware challenge or markup change). Returning empty results.")
@@ -69,6 +105,9 @@ def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
         raw_items = scrape_items(page, url)
         items = process_items_with_llm(raw_items, topic, None, api_key, groq_api_key)
         new_ids, updated_ids = check_new_items(topic, items)
+        
+        new_ids = sort_ids_by_date(new_ids, items)
+        updated_ids = sort_ids_by_date(updated_ids, items)
         
         results = []
         if new_ids:
