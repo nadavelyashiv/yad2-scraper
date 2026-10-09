@@ -54,6 +54,16 @@ jobs:
         if: always()
         run: python facebook_scraper.py
 
+      - name: Upload error artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-screenshots
+          path: |
+            *_error.png
+            *_error.html
+          retention-days: 7
+
       - name: Push new json data if needed
         if: always()
         run: |
