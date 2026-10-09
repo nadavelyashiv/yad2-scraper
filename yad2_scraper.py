@@ -94,8 +94,8 @@ def scrape_items(page, url):
                     items.setdefault(item_id, (r["text"], full_href, dates_map.get(item_id, {})))
             if items:
                 return items
-    logger.error("Could not extract listings (Radware challenge or markup change). Returning empty results.")
-    return {}
+    logger.error("Could not extract listings (Radware challenge or markup change).")
+    raise RuntimeError("Could not extract listings (Radware challenge or markup change).")
 
 
 def scrape(page, topic, url, token, chat_id, api_key, groq_api_key):
